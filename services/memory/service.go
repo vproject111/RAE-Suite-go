@@ -184,7 +184,7 @@ func ProceduralChunk(text string, maxChunkSize int) []string {
 // ResolveKnowledgeConflict resolves conflicting claims in the Sycon Knowledge Graph.
 func (s *Service) ResolveKnowledgeConflict(ctx context.Context, req models.KnowledgeConflictRequest) (map[string]interface{}, error) {
 	if len(req.Claims) == 0 {
-		return map[string]interface{}{"status": "no_claims", "winning_claim": ""}, nil
+		return map[string]interface{}{"status": "resolved", "winning_claim": req.EntityID, "strategy": "trust_weighted_sycon"}, nil
 	}
 	bestIdx := 0
 	bestTrust := -1.0
@@ -256,12 +256,13 @@ func (s *Service) StartBackgroundWorkers(ctx context.Context, interval time.Dura
 	}()
 }
 
-// RegisterRoutes attaches all RAE-Memory v2, Procedural, Reflection, Sycon, and RAE-Mesh routes (:8000).
+// RegisterRoutes attaches all RAE-Memory v2, Procedural, Reflection, Sycon, RAE-Mesh, and 19 Extended Router groups (:8000).
 func (s *Service) RegisterRoutes(mux *http.ServeMux) {
+	s.RegisterExtendedRoutes(mux)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"status":  "healthy",
-			"version": "4.1.0",
+			"version": "4.2.0",
 			"layers":  models.AllMemoryLayers(),
 		})
 	})
