@@ -29,6 +29,7 @@ func main() {
 	allFlag := flag.Bool("all", true, "Run all 9 RAE-Suite & RAE-CRL modules concurrently in one binary")
 	modulesFlag := flag.String("modules", "memory,crl,mcp,suite,quality,lab,phoenix,hive,portal", "Comma-separated list of modules to run")
 	profileFlag := flag.String("profile", "edge", "Storage & execution profile: edge | cluster | hybrid")
+	portOffsetFlag := flag.Int("port-offset", 0, "Optional port offset (e.g. 10000 to run on 18000..18503 alongside Python stack)")
 	dryRunFlag := flag.Bool("dry-run", false, "Verify initialization of selected modules and exit")
 	flag.Parse()
 
@@ -57,14 +58,15 @@ func main() {
 		}
 	}
 
-	fmt.Printf("RAE-Go v4.0 Unified Runner (profile=%s, active_modules=%d)\n", *profileFlag, len(active))
+	fmt.Printf("RAE-Go v4.1 Unified Runner (profile=%s, active_modules=%d, port_offset=%d)\n", *profileFlag, len(active), *portOffsetFlag)
 	if *dryRunFlag {
 		return
 	}
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
-	startHTTP := func(name, addr string, reg func(*http.ServeMux)) {
+	startHTTP := func(name string, basePort int, reg func(*http.ServeMux)) {
+		addr := fmt.Sprintf(":%d", basePort+*portOffsetFlag)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -79,32 +81,33 @@ func main() {
 
 	if active["memory"] {
 		memSvc.StartBackgroundWorkers(ctx, 60*time.Second)
-		startHTTP("rae-memory", ":8000", memSvc.RegisterRoutes)
+		startHTTP("rae-memory", 8000, memSvc.RegisterRoutes)
 	}
 	if active["crl"] {
-		startHTTP("rae-crl", ":8503", crlSvc.RegisterRoutes)
+		crlSvc.StartSyncEngine(ctx, 60*time.Second)
+		startHTTP("rae-crl", 8503, crlSvc.RegisterRoutes)
 	}
 	if active["mcp"] {
-		startHTTP("rae-mcp", ":8005", mcpSvc.RegisterRoutes)
+		startHTTP("rae-mcp", 8005, mcpSvc.RegisterRoutes)
 	}
 	if active["suite"] {
-		startHTTP("rae-suite", ":8009", orchSvc.RegisterRoutes)
+		startHTTP("rae-suite", 8009, orchSvc.RegisterRoutes)
 	}
 	if active["quality"] {
-		startHTTP("rae-quality", ":8010", qualSvc.RegisterRoutes)
+		startHTTP("rae-quality", 8010, qualSvc.RegisterRoutes)
 	}
 	if active["lab"] {
-		startHTTP("rae-lab", ":8011", labSvc.RegisterRoutes)
+		startHTTP("rae-lab", 8011, labSvc.RegisterRoutes)
 	}
 	if active["phoenix"] {
-		startHTTP("rae-phoenix", ":8012", phoenixSvc.RegisterRoutes)
+		startHTTP("rae-phoenix", 8012, phoenixSvc.RegisterRoutes)
 	}
 	if active["hive"] {
 		hiveSvc.StartWatchdogLoop(ctx, 30*time.Second)
-		startHTTP("rae-hive", ":8013", hiveSvc.RegisterRoutes)
+		startHTTP("rae-hive", 8013, hiveSvc.RegisterRoutes)
 	}
 	if active["portal"] {
-		startHTTP("rae-portal", ":8082", portalSvc.RegisterRoutes)
+		startHTTP("rae-portal", 8082, portalSvc.RegisterRoutes)
 	}
 
 	wg.Wait()
