@@ -11,6 +11,7 @@ import (
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/models"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/ports"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/reflection"
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/search"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/security"
 	"github.com/vproject111/RAE-Suite-go/pkg/raemesh"
 )
@@ -21,6 +22,7 @@ type Service struct {
 	store     ports.MemoryStoragePort
 	outbox    ports.OutboxQueuePort
 	reflector *reflection.Coordinator
+	gateway   *search.LogicGateway
 	mesh      *raemesh.MeshEngine
 	guard     *security.HardFramesGuard
 }
@@ -34,9 +36,123 @@ func NewService(store ports.MemoryStoragePort, outbox ports.OutboxQueuePort, gua
 		store:     store,
 		outbox:    outbox,
 		reflector: reflection.NewCoordinator(),
+		gateway:   search.NewLogicGateway(nil),
 		mesh:      raemesh.NewMeshEngine(store, guard),
 		guard:     guard,
 	}
+}
+
+// Mesh returns the underlying RAE-Mesh engine.
+func (s *Service) Mesh() *raemesh.MeshEngine {
+	return s.mesh
+}
+
+// ConsolidateFromWorking transitions eligible non-RESTRICTED Working memories into the Episodic layer.
+func (s *Service) ConsolidateFromWorking(ctx context.Context, project string) (int, error) {
+	items, err := s.store.QueryMemories(ctx, ports.QueryFilter{
+		Query:   "*",
+		Project: project,
+		Layers:  []models.MemoryLayer{models.LayerWorking},
+		TopK:    500,
+	})
+	if err != nil {
+		return 0, err
+	}
+	consolidated := 0
+	for _, sc := range items {
+		m := sc.Memory
+		if m.InfoClass == models.InfoRestricted {
+			continue
+		}
+		m.Layer = models.LayerEpisodic
+		if err := s.store.StoreMemory(ctx, &m); err == nil {
+			consolidated++
+		}
+	}
+	return consolidated, nil
+}
+
+// UpgradeToSemantic promotes high-usage or high-importance Episodic memories into the Semantic layer.
+func (s *Service) UpgradeToSemantic(ctx context.Context, project string, minUsage int) (int, error) {
+	if minUsage <= 0 {
+		minUsage = 2
+	}
+	items, err := s.store.QueryMemories(ctx, ports.QueryFilter{
+		Query:   "*",
+		Project: project,
+		Layers:  []models.MemoryLayer{models.LayerEpisodic},
+		TopK:    500,
+	})
+	if err != nil {
+		return 0, err
+	}
+	upgraded := 0
+	for _, sc := range items {
+		m := sc.Memory
+		if m.UsageCount >= minUsage || m.Importance >= 0.80 {
+			m.Layer = models.LayerSemantic
+			if err := s.store.StoreMemory(ctx, &m); err == nil {
+				upgraded++
+			}
+		}
+	}
+	return upgraded, nil
+}
+
+// PromoteToLTM promotes durable Semantic or Reflective memories into the sealed LTM layer.
+func (s *Service) PromoteToLTM(ctx context.Context, project string, minImportance float64) (int, error) {
+	if minImportance <= 0 {
+		minImportance = 0.85
+	}
+	items, err := s.store.QueryMemories(ctx, ports.QueryFilter{
+		Query:   "*",
+		Project: project,
+		Layers:  []models.MemoryLayer{models.LayerSemantic, models.LayerReflective},
+		TopK:    500,
+	})
+	if err != nil {
+		return 0, err
+	}
+	promoted := 0
+	for _, sc := range items {
+		m := sc.Memory
+		if m.Importance >= minImportance {
+			m.Layer = models.LayerLTM
+			if err := s.store.StoreMemory(ctx, &m); err == nil {
+				promoted++
+			}
+		}
+	}
+	return promoted, nil
+}
+
+// DetectCommunities discovers connected clusters in the Knowledge Graph layer.
+func (s *Service) DetectCommunities(ctx context.Context) ([][]string, error) {
+	adj, err := s.store.GetGraphAdjacency(ctx)
+	if err != nil {
+		return nil, err
+	}
+	nodeSet := make(map[string]bool)
+	for src, targets := range adj {
+		nodeSet[src] = true
+		for _, dst := range targets {
+			nodeSet[dst] = true
+		}
+	}
+	nodes := make([]string, 0, len(nodeSet))
+	for n := range nodeSet {
+		nodes = append(nodes, n)
+	}
+	return search.DetectCommunities(nodes, adj), nil
+}
+
+// PropagateResonance spreads activation energy across the Knowledge Graph layer.
+func (s *Service) PropagateResonance(ctx context.Context, seeds map[string]float64, hops int) (map[string]float64, error) {
+	adj, err := s.store.GetGraphAdjacency(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return search.PropagateSemanticResonance(seeds, adj, hops, 0.5), nil
 }
 
 // ProceduralChunk splits industrial/procedural text along step boundaries (Step 1, Krok 1, etc.).
@@ -145,13 +261,14 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"status":  "healthy",
-			"version": "4.0.0",
+			"version": "4.1.0",
 			"layers":  models.AllMemoryLayers(),
 		})
 	})
 
 	mux.HandleFunc("/v2/memories/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
+		switch r.Method {
+		case http.MethodPost:
 			var item models.MemoryItem
 			if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -173,19 +290,75 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 				"layer":     item.Layer,
 				"status":    "saved",
 			})
-			return
+		case http.MethodDelete:
+			id := strings.TrimPrefix(r.URL.Path, "/v2/memories/")
+			if id == "" {
+				id = r.URL.Query().Get("id")
+			}
+			if err := s.store.DeleteMemory(r.Context(), id); err != nil {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]string{"status": "deleted", "id": id})
+		default:
+			res, err := s.store.QueryMemories(r.Context(), ports.QueryFilter{
+				Query:   r.URL.Query().Get("query"),
+				Project: r.URL.Query().Get("project"),
+				Layers:  parseLayersParam(r.URL.Query().Get("layer")),
+				TopK:    50,
+			})
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]interface{}{"results": res})
 		}
-		res, err := s.store.QueryMemories(r.Context(), ports.QueryFilter{
-			Query:   r.URL.Query().Get("query"),
-			Project: r.URL.Query().Get("project"),
-			Layers:   parseLayersParam(r.URL.Query().Get("layer")),
-			TopK:    50,
-		})
+	})
+
+	mux.HandleFunc("/v2/memories/stats", func(w http.ResponseWriter, r *http.Request) {
+		stats, err := s.store.GetMemoryStats(r.Context(), r.URL.Query().Get("project"))
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]interface{}{"results": res})
+		writeJSON(w, http.StatusOK, stats)
+	})
+
+	mux.HandleFunc("/v2/memories/consolidate", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Project string `json:"project"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		count, err := s.ConsolidateFromWorking(r.Context(), req.Project)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"status": "consolidated", "consolidated_count": count})
+	})
+
+	mux.HandleFunc("/v2/memories/upgrade", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Project       string  `json:"project"`
+			MinUsage      int     `json:"min_usage"`
+			PromoteToLTM  bool    `json:"promote_to_ltm"`
+			MinImportance float64 `json:"min_importance"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		upgraded, err := s.UpgradeToSemantic(r.Context(), req.Project, req.MinUsage)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		promoted := 0
+		if req.PromoteToLTM {
+			promoted, _ = s.PromoteToLTM(r.Context(), req.Project, req.MinImportance)
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"status":         "upgraded",
+			"upgraded_count": upgraded,
+			"promoted_ltm":   promoted,
+		})
 	})
 
 	mux.HandleFunc("/v2/memories/query", func(w http.ResponseWriter, r *http.Request) {
@@ -253,6 +426,41 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 			"status":          "synced",
 			"merkle_root":     root,
 			"synced_memories": len(exp),
+		})
+	})
+
+	mux.HandleFunc("/v2/mesh/peers/sync", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			PeerID  string `json:"peer_id"`
+			Project string `json:"project"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		res, err := s.mesh.SyncWithPeer(r.Context(), req.PeerID, req.Project)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, res)
+	})
+
+	mux.HandleFunc("/v2/mesh/receive", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Token    string              `json:"token"`
+			Memories []models.MemoryItem `json:"memories"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		accepted, rejected, err := s.mesh.ReceiveMemories(r.Context(), req.Token, req.Memories)
+		if err != nil {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"status":   "received",
+			"accepted": accepted,
+			"rejected": rejected,
 		})
 	})
 }

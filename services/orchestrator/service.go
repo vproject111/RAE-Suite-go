@@ -15,6 +15,21 @@ import (
 	"github.com/vproject111/RAE-Suite-go/services/quality"
 )
 
+// KernelState represents the canonical states of the AutonomyKernel state machine.
+type KernelState string
+
+const (
+	StatePending       KernelState = "PENDING"
+	StateResearching   KernelState = "RESEARCHING"
+	StatePlanning      KernelState = "PLANNING"
+	StateCoding        KernelState = "CODING"
+	StateAuditing      KernelState = "AUDITING"
+	StateNeedsApproval KernelState = "NEEDS_APPROVAL"
+	StateApproved      KernelState = "APPROVED"
+	StateCompleted     KernelState = "COMPLETED"
+	StateEscalatedL3   KernelState = "ESCALATED_L3"
+)
+
 // HITLRequest represents a high-risk operation awaiting cryptographic human approval.
 type HITLRequest struct {
 	RequestID     string    `json:"request_id"`
@@ -27,19 +42,20 @@ type HITLRequest struct {
 
 // TriadCascadeResult captures the 3-tier 9-model + Stage 0 RAE-CRL execution output.
 type TriadCascadeResult struct {
-	Task             string   `json:"task"`
-	ResearchID       string   `json:"research_hypothesis_id"`
-	Tier0LocalModels []string `json:"tier0_local_gpu_models"`
-	Tier1Generate    []string `json:"tier1_generate"`
-	Tier2Review      []string `json:"tier2_review_repair"`
-	Tier3Judge       []string `json:"tier3_judge"`
-	AuditPassed      bool     `json:"audit_passed"`
-	QualityRating    string   `json:"quality_rating"`
-	Status           string   `json:"status"`
+	Task             string        `json:"task"`
+	ResearchID       string        `json:"research_hypothesis_id"`
+	StateHistory     []KernelState `json:"state_history"`
+	Tier0LocalModels []string      `json:"tier0_local_gpu_models"`
+	Tier1Generate    []string      `json:"tier1_generate"`
+	Tier2Review      []string      `json:"tier2_review_repair"`
+	Tier3Judge       []string      `json:"tier3_judge"`
+	AuditPassed      bool          `json:"audit_passed"`
+	QualityRating    string        `json:"quality_rating"`
+	Status           string        `json:"status"`
 }
 
 // Service implements Module 1: RAE-Suite Orchestrator (Stage 0 RAE-CRL ResearchStage,
-// AutonomyKernel, LayerTriadRunner, CEO Reconcile & ComputeFabricRouter).
+// AutonomyKernel State Machine, LayerTriadRunner, CEO Reconcile & ComputeFabricRouter).
 type Service struct {
 	mu           sync.RWMutex
 	mathCtrl     *raemath.MathController
@@ -70,11 +86,11 @@ func NewService(mc *raemath.MathController, crlSvc *crl.Service, qualSvc *qualit
 	}
 }
 
-// ExecuteCascade runs Stage 0 (RAE-CRL Hypothesis Registration) followed by the 3-Tier 9-Model Cascade
-// and RAE-Quality Tribunal verification.
+// ExecuteCascade runs the full AutonomyKernel state machine:
+// PENDING -> RESEARCHING (Stage 0 RAE-CRL) -> PLANNING -> CODING -> AUDITING -> COMPLETED/ESCALATED_L3.
 func (s *Service) ExecuteCascade(ctx context.Context, task, project, codeDraft string) (*TriadCascadeResult, error) {
+	states := []KernelState{StatePending, StateResearching}
 	researchID := ""
-	// Stage 0: Pre-Generation Research & Hypothesis Stage (RAE-CRL)
 	if s.crlSvc != nil {
 		trace, err := s.crlSvc.QuickNote(ctx, "Stage 0 Hypothesis for: "+task, project, "autonomy-kernel")
 		if err == nil {
@@ -85,15 +101,20 @@ func (s *Service) ExecuteCascade(ctx context.Context, task, project, codeDraft s
 		}
 	}
 
+	states = append(states, StatePlanning, StateCoding, StateAuditing)
 	verdict := s.qualitySvc.RunTribunal(codeDraft, nil, task)
-	status := "COMPLETED"
-	if !verdict.Approved {
-		status = "ESCALATED_L3"
+	status := string(StateCompleted)
+	if verdict.Approved {
+		states = append(states, StateCompleted)
+	} else {
+		states = append(states, StateEscalatedL3)
+		status = string(StateEscalatedL3)
 	}
 
 	return &TriadCascadeResult{
-		Task:       task,
-		ResearchID: researchID,
+		Task:         task,
+		ResearchID:   researchID,
+		StateHistory: states,
 		Tier0LocalModels: []string{
 			"deepseek-r1:8b",
 			"SpeakLeash/bielik-11b-v3.0-instruct:Q5_K_M",
@@ -132,7 +153,7 @@ func (s *Service) CreateHITLRequest(operation string) HITLRequest {
 	req := HITLRequest{
 		RequestID: models.GenerateUUIDv7(),
 		Operation: operation,
-		Status:    "NEEDS_APPROVAL",
+		Status:    string(StateNeedsApproval),
 		CreatedAt: time.Now().UTC(),
 	}
 	s.hitlRequests[req.RequestID] = req
@@ -150,7 +171,7 @@ func (s *Service) ApproveHITLRequest(requestID, approver string) (*HITLRequest, 
 	payload := requestID + "|APPROVED|" + approver
 	req.ApprovalToken = s.guard.SignTokenHMAC(payload)
 	req.ApprovedBy = approver
-	req.Status = "APPROVED"
+	req.Status = string(StateApproved)
 	s.hitlRequests[requestID] = req
 	cp := req
 	return &cp, nil
@@ -172,7 +193,7 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"status":     "operational",
-			"version":    "4.0.0",
+			"version":    "4.1.0",
 			"api":        "v2",
 			"quality_v2": "integrated",
 			"crl_v2":     "integrated",

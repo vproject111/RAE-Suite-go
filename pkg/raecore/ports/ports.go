@@ -19,14 +19,26 @@ type QueryFilter struct {
 	TopK        int                  `json:"k"`
 }
 
+// MemoryStats summarizes counts and importance across all 8 layers and memory types.
+type MemoryStats struct {
+	TotalCount        int                        `json:"total_count"`
+	ByLayer           map[models.MemoryLayer]int `json:"by_layer"`
+	ByType            map[models.MemoryType]int  `json:"by_type"`
+	AverageImportance float64                    `json:"average_importance"`
+	TotalUsage        int                        `json:"total_usage"`
+}
+
 // MemoryStoragePort defines the database-agnostic contract for all 8 RAE-Memory layers.
 type MemoryStoragePort interface {
 	StoreMemory(ctx context.Context, item *models.MemoryItem) error
 	GetMemory(ctx context.Context, id string) (*models.MemoryItem, error)
+	DeleteMemory(ctx context.Context, id string) error
 	QueryMemories(ctx context.Context, filter QueryFilter) ([]models.ScoredMemoryItem, error)
+	GetMemoryStats(ctx context.Context, project string) (MemoryStats, error)
 	DeleteExpiredSensory(ctx context.Context) (int, error)
 	AddGraphEdge(ctx context.Context, sourceID, targetID, relation string) error
 	GetGraphNeighbors(ctx context.Context, nodeID string) ([]string, error)
+	GetGraphAdjacency(ctx context.Context) (map[string][]string, error)
 }
 
 // EpistemicStoragePort defines the database-agnostic contract for RAE-CRL artifacts, DAG, and CBOR journal.
@@ -42,11 +54,11 @@ type EpistemicStoragePort interface {
 
 // OutboxEvent represents a transactional outbox message for RAE-Mesh / Governance propagation.
 type OutboxEvent struct {
-	ID          string                 `json:"id"`
-	EventType   string                 `json:"event_type"`
-	Payload     map[string]interface{} `json:"payload"`
-	Status      string                 `json:"status"` // PENDING, PROCESSING, DELIVERED, FAILED
-	Attempts    int                    `json:"attempts"`
+	ID        string                 `json:"id"`
+	EventType string                 `json:"event_type"`
+	Payload   map[string]interface{} `json:"payload"`
+	Status    string                 `json:"status"` // PENDING, PROCESSING, DELIVERED, DEAD_LETTER
+	Attempts  int                    `json:"attempts"`
 }
 
 // OutboxQueuePort defines the transactional outbox contract (SKIP LOCKED / WAL).
