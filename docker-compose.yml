@@ -1,0 +1,54 @@
+services:
+  rae-memory:
+    build: .
+    entrypoint: ["/usr/local/bin/rae-memory"]
+    ports:
+      - "8000:8000"
+
+  rae-crl:
+    build: .
+    entrypoint: ["/usr/local/bin/rae-crl"]
+    ports:
+      - "8503:8503"
+
+  rae-mcp:
+    build: .
+    entrypoint: ["/usr/local/bin/rae-mcp"]
+    ports:
+      - "8005:8005"
+
+  rae-suite:
+    build: .
+    entrypoint: ["/usr/local/bin/rae-suite"]
+    ports:
+      - "8009:8009"
+
+  rae-quality:
+    build: .
+    entrypoint: ["/usr/local/bin/rae-quality"]
+    ports:
+      - "8010:8010"
+
+  rae-lab:
+    build: .
+    entrypoint: ["/usr/local/bin/rae-lab"]
+    ports:
+      - "8011:8011"
+
+  rae-phoenix:
+    build: .
+    entrypoint: ["/usr/local/bin/rae-phoenix"]
+    ports:
+      - "8012:8012"
+
+  rae-hive:
+    build: .
+    entrypoint: ["/usr/local/bin/rae-hive"]
+    ports:
+      - "8013:8013"
+
+  rae-portal:
+    build: .
+    entrypoint: ["/usr/local/bin/rae-portal"]
+    ports:
+      - "8082:8082"
