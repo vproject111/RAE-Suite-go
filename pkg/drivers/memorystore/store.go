@@ -3,14 +3,17 @@ package memorystore
 import (
 	"context"
 	"errors"
+	"math"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/epistemic"
 	raemath "github.com/vproject111/RAE-Suite-go/pkg/raecore/math"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/models"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/ports"
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/search"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/security"
 )
 
@@ -18,15 +21,15 @@ import (
 // in pure Go (CGO_ENABLED=0) with Named Vectors HNSW-style search, 8 memory layers,
 // 9 search strategies, Epistemic DAG, and SKIP-LOCKED transactional outbox.
 type UnifiedStore struct {
-	mu           sync.RWMutex
-	memories     map[string]models.MemoryItem
-	graphEdges   map[string][]models.ArtifactEdge
-	artifacts    map[string]models.EpistemicArtifact
-	dagEdges     []models.ArtifactEdge
-	journal      []models.EpistemicJournalEvent
-	outbox       []ports.OutboxEvent
-	mathCtrl     *raemath.MathController
-	guard        *security.HardFramesGuard
+	mu         sync.RWMutex
+	memories   map[string]models.MemoryItem
+	graphEdges map[string][]models.ArtifactEdge
+	artifacts  map[string]models.EpistemicArtifact
+	dagEdges   []models.ArtifactEdge
+	journal    []models.EpistemicJournalEvent
+	outbox     []ports.OutboxEvent
+	mathCtrl   *raemath.MathController
+	guard      *security.HardFramesGuard
 }
 
 // NewUnifiedStore creates a new database-agnostic store instance.
@@ -56,6 +59,9 @@ func (s *UnifiedStore) StoreMemory(_ context.Context, item *models.MemoryItem) e
 	}
 	if item.AgentID == "" {
 		item.AgentID = "rae-agent"
+	}
+	if item.MemoryType == "" {
+		item.MemoryType = models.TypeText
 	}
 	if item.Importance <= 0 {
 		item.Importance = 0.5
@@ -96,6 +102,45 @@ func (s *UnifiedStore) GetMemory(_ context.Context, id string) (*models.MemoryIt
 	s.memories[id] = m
 	cp := m
 	return &cp, nil
+}
+
+// DeleteMemory removes a memory by ID.
+func (s *UnifiedStore) DeleteMemory(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.memories[id]; !ok {
+		return errors.New("memory not found")
+	}
+	delete(s.memories, id)
+	return nil
+}
+
+// GetMemoryStats computes statistics across all 8 layers and memory types.
+func (s *UnifiedStore) GetMemoryStats(_ context.Context, project string) (ports.MemoryStats, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	stats := ports.MemoryStats{
+		ByLayer: make(map[models.MemoryLayer]int),
+		ByType:  make(map[models.MemoryType]int),
+	}
+	for _, l := range models.AllMemoryLayers() {
+		stats.ByLayer[l] = 0
+	}
+	var sumImp float64
+	for _, m := range s.memories {
+		if project != "" && m.Project != "" && m.Project != project {
+			continue
+		}
+		stats.TotalCount++
+		stats.ByLayer[m.Layer]++
+		stats.ByType[m.MemoryType]++
+		stats.TotalUsage += m.UsageCount
+		sumImp += m.Importance
+	}
+	if stats.TotalCount > 0 {
+		stats.AverageImportance = math.Round((sumImp/float64(stats.TotalCount))*10000) / 10000
+	}
+	return stats, nil
 }
 
 // QueryMemories executes multi-strategy retrieval across all 8 layers and Named Vector spaces.
@@ -139,6 +184,8 @@ func (s *UnifiedStore) QueryMemories(_ context.Context, filter ports.QueryFilter
 			if strings.Contains(m.ID, qTrim) || strings.Contains(strings.ToLower(m.Content), strings.ToLower(qTrim)) {
 				sim = 1.0
 			}
+		case "sparse":
+			sim = search.ScoreBM25(qTrim, m.Content, 12.0, len(s.memories)+1, 1)
 		case "vector", "multi_vector":
 			vec := m.Embedding
 			if filter.VectorSpace != "" && m.NamedVectors != nil {
@@ -152,7 +199,7 @@ func (s *UnifiedStore) QueryMemories(_ context.Context, filter ports.QueryFilter
 			if edges := s.graphEdges[m.ID]; len(edges) > 0 {
 				sim = minFloat(1.0, sim+0.15)
 			}
-		default: // fulltext, sparse, visual, hybrid
+		default: // fulltext, visual, hybrid
 			if isWildcard {
 				sim = 0.85
 			} else {
@@ -235,6 +282,19 @@ func (s *UnifiedStore) GetGraphNeighbors(_ context.Context, nodeID string) ([]st
 	return out, nil
 }
 
+// GetGraphAdjacency returns the full adjacency map of the Knowledge Graph layer.
+func (s *UnifiedStore) GetGraphAdjacency(_ context.Context) (map[string][]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	adj := make(map[string][]string, len(s.graphEdges))
+	for src, edges := range s.graphEdges {
+		for _, e := range edges {
+			adj[src] = append(adj[src], e.TargetID)
+		}
+	}
+	return adj, nil
+}
+
 // SaveArtifact persists an RAE-CRL EpistemicArtifact and computes its deterministic CBOR VersionCID.
 func (s *UnifiedStore) SaveArtifact(_ context.Context, art *models.EpistemicArtifact) error {
 	if art.ID == "" {
@@ -300,18 +360,12 @@ func (s *UnifiedStore) ListArtifacts(_ context.Context, project string, filterTy
 	return out, nil
 }
 
-// LinkArtifacts adds a typed edge to the RAE-CRL Provenance DAG, rejecting self-loops.
+// LinkArtifacts adds a typed edge to the RAE-CRL Provenance DAG using full multi-hop DFS cycle validation.
 func (s *UnifiedStore) LinkArtifacts(_ context.Context, sourceID, targetID, relationType string) error {
-	if sourceID == targetID {
-		return errors.New("DAG cycle violation: self-loop prohibited")
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// Check simple 2-hop cycle
-	for _, e := range s.dagEdges {
-		if e.SourceID == targetID && e.TargetID == sourceID {
-			return errors.New("DAG cycle violation: bidirectional cycle detected")
-		}
+	if err := epistemic.ValidateDAGAddition(s.dagEdges, sourceID, targetID, relationType); err != nil {
+		return err
 	}
 	s.dagEdges = append(s.dagEdges, models.ArtifactEdge{
 		SourceID:     sourceID,
