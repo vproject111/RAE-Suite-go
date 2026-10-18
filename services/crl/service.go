@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/epistemic"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/models"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/ports"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/security"
@@ -71,7 +72,6 @@ func (s *Service) QuickNote(ctx context.Context, content, project, author string
 		Action:     "QUICK_NOTE_CREATED",
 		Actor:      author,
 	})
-	// Project to RAE-Memory Working layer (encrypted RESTRICTED) and Sensory buffer
 	if s.memory != nil {
 		_ = s.memory.StoreMemory(ctx, &models.MemoryItem{
 			Content:   content,
@@ -154,11 +154,11 @@ func (s *Service) RecordFailure(ctx context.Context, experimentID, reason string
 	})
 	if s.memory != nil {
 		_ = s.memory.StoreMemory(ctx, &models.MemoryItem{
-			Content:   fmt.Sprintf("FAILED_BUT_INFORMATIVE (%s): %s", exp.Title, reason),
-			Layer:     models.LayerReflective,
-			InfoClass: models.InfoInternal,
-			Project:   exp.Project,
-			AgentID:   exp.Author,
+			Content:    fmt.Sprintf("FAILED_BUT_INFORMATIVE (%s): %s", exp.Title, reason),
+			Layer:      models.LayerReflective,
+			InfoClass:  models.InfoInternal,
+			Project:    exp.Project,
+			AgentID:    exp.Author,
 			Importance: 0.90,
 			Governance: models.GovernanceMeta{
 				IsFailure:       true,
@@ -206,6 +206,32 @@ func (s *Service) ForkArtifact(ctx context.Context, originalID, newAuthor, reaso
 	return fork, nil
 }
 
+// RequestApproval submits an artifact for Principal Investigator (PI) review.
+func (s *Service) RequestApproval(ctx context.Context, artifactID, proposer string) (*models.EpistemicArtifact, error) {
+	if proposer == "" {
+		proposer = "researcher"
+	}
+	art, err := s.epistemic.GetArtifact(ctx, artifactID)
+	if err != nil {
+		return nil, err
+	}
+	art.ProposedBy = proposer
+	art.Visibility = models.VisibilityTeam
+	art.InfoClass = models.InfoInternal
+	art.GracePeriodEnd = nil
+	if err := s.epistemic.SaveArtifact(ctx, art); err != nil {
+		return nil, err
+	}
+	_ = s.epistemic.AppendJournalEvent(ctx, &models.EpistemicJournalEvent{
+		TenantID:   art.TenantID,
+		Project:    art.Project,
+		ArtifactID: art.ID,
+		Action:     "APPROVAL_REQUESTED",
+		Actor:      proposer,
+	})
+	return art, nil
+}
+
 // ApproveArtifact performs Principal Investigator (PI) approval and unlocks team/public sync.
 func (s *Service) ApproveArtifact(ctx context.Context, artifactID, approver string) (*models.EpistemicArtifact, error) {
 	if approver == "" {
@@ -225,6 +251,13 @@ func (s *Service) ApproveArtifact(ctx context.Context, artifactID, approver stri
 	if err := s.epistemic.SaveArtifact(ctx, art); err != nil {
 		return nil, err
 	}
+	_ = s.epistemic.AppendJournalEvent(ctx, &models.EpistemicJournalEvent{
+		TenantID:   art.TenantID,
+		Project:    art.Project,
+		ArtifactID: art.ID,
+		Action:     "ARTIFACT_APPROVED",
+		Actor:      approver,
+	})
 	return art, nil
 }
 
@@ -327,13 +360,48 @@ func (s *Service) SealEvidencePackage(ctx context.Context, project, sbomRef, vex
 	return pkg, nil
 }
 
+// VerifyPackageOffline verifies a sealed EvidencePackage's CBOR VersionCID, SBOM/VEX, and HMAC-SHA256 signature offline.
+func (s *Service) VerifyPackageOffline(pkg *models.EvidencePackage) error {
+	return epistemic.VerifyEvidencePackageOffline(pkg, s.guard)
+}
+
+// StartSyncEngine launches the background RAE-CRL SyncEngine that sweeps expired Grace Periods.
+func (s *Service) StartSyncEngine(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = 60 * time.Second
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				arts, err := s.epistemic.ListArtifacts(ctx, "", "")
+				if err != nil {
+					continue
+				}
+				now := time.Now().UTC()
+				for i := range arts {
+					a := arts[i]
+					if a.GracePeriodEnd != nil && now.After(*a.GracePeriodEnd) {
+						a.GracePeriodEnd = nil
+						_ = s.epistemic.SaveArtifact(ctx, &a)
+					}
+				}
+			}
+		}
+	}()
+}
+
 // RegisterRoutes attaches RAE-CRL REST API and embedded WCAG Web Lab Desk routes (:8503).
 func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"status":     "healthy",
 			"department": "crl",
-			"version":    "4.0.0",
+			"version":    "4.1.0",
 		})
 	})
 
@@ -343,7 +411,7 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>RAE-CRL Cognitive Research Layer</title></head><body style="background:#0f172a;color:#f8fafc;font-family:sans-serif;padding:2rem;"><h1>RAE-CRL v4.0 (Go Native Lab Desk)</h1><p>Epistemic Continuity, 24h Grace Period Traces, Typed Provenance DAG &amp; SBOM/VEX Evidence Sealing.</p></body></html>`))
+		_, _ = w.Write([]byte(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>RAE-CRL Cognitive Research Layer</title></head><body style="background:#0f172a;color:#f8fafc;font-family:sans-serif;padding:2rem;"><h1>RAE-CRL v4.1 (Go Native Lab Desk)</h1><p>Epistemic Continuity, 24h Grace Period Traces, Typed Provenance DAG &amp; SBOM/VEX Evidence Sealing.</p></body></html>`))
 	})
 
 	mux.HandleFunc("/v2/crl/traces", func(w http.ResponseWriter, r *http.Request) {
@@ -428,6 +496,40 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, art)
 	})
 
+	mux.HandleFunc("/v2/crl/artifacts/request-approval", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ArtifactID string `json:"artifact_id"`
+			Proposer   string `json:"proposer"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		art, err := s.RequestApproval(r.Context(), req.ArtifactID, req.Proposer)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, art)
+	})
+
+	mux.HandleFunc("/v2/crl/artifacts/approve", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ArtifactID   string `json:"artifact_id"`
+			ApproverName string `json:"approver_name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		art, err := s.ApproveArtifact(r.Context(), req.ArtifactID, req.ApproverName)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, art)
+	})
+
 	mux.HandleFunc("/v2/crl/conflicts", func(w http.ResponseWriter, r *http.Request) {
 		project := r.URL.Query().Get("project")
 		conflicts, err := s.DetectLogicalConflicts(r.Context(), project)
@@ -455,6 +557,23 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, http.StatusOK, pkg)
+	})
+
+	mux.HandleFunc("/v2/crl/verify", func(w http.ResponseWriter, r *http.Request) {
+		var pkg models.EvidencePackage
+		if err := json.NewDecoder(r.Body).Decode(&pkg); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		if err := s.VerifyPackageOffline(&pkg); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]interface{}{"verified": false, "error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"verified":    true,
+			"package_id":  pkg.PackageID,
+			"version_cid": pkg.VersionCID,
+		})
 	})
 }
 
