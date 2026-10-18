@@ -761,6 +761,9 @@ func (s *Service) RegisterExtendedRoutes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"federated_results": res, "peers_queried": len(s.mesh.ListPeers())})
 	})
 
+	mux.HandleFunc("/system/tables", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"tables": postgres.Canonical12Tables(), "count": 12})
+	})
 	mux.HandleFunc("/system/tenants", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"tenants": ext.catalog.ListTenants()})
 	})
