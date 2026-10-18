@@ -19,10 +19,11 @@ type CandidateGuardrail struct {
 
 // Service implements Module 7: RAE-Lab (Evolution Engine, MABTuner, Candidate Guardrails & Offline Replay).
 type Service struct {
-	mu         sync.RWMutex
-	mathCtrl   *raemath.MathController
-	candidates []CandidateGuardrail
-	scansCount int
+	mu          sync.RWMutex
+	mathCtrl    *raemath.MathController
+	candidates  []CandidateGuardrail
+	scansCount  int
+	experiments int
 }
 
 // NewService creates a new RAE-Lab service.
@@ -58,6 +59,41 @@ func (s *Service) RegisterScan(passed bool, failureReason string) map[string]int
 		"scans_processed":  s.scansCount,
 		"updated_weights":  w,
 		"candidates_count": len(s.candidates),
+	}
+}
+
+// RunExperiment executes an offline MAB / guardrail evolution experiment.
+func (s *Service) RunExperiment(armID string, reward float64) map[string]interface{} {
+	s.mu.Lock()
+	s.experiments++
+	expNum := s.experiments
+	s.mu.Unlock()
+
+	if armID == "" {
+		armID = "hyper_37"
+	}
+	w := s.mathCtrl.UpdateReward(armID, reward)
+	return map[string]interface{}{
+		"experiment_id":   models.GenerateUUIDv7(),
+		"experiment_num":  expNum,
+		"arm_tested":      armID,
+		"reward":          reward,
+		"updated_weights": w,
+		"status":          "completed",
+	}
+}
+
+// AnalyzeFailures aggregates failure patterns from candidate guardrails.
+func (s *Service) AnalyzeFailures() map[string]interface{} {
+	cands := s.GetCandidates("")
+	bySource := make(map[string]int)
+	for _, c := range cands {
+		bySource[c.FailureSource]++
+	}
+	return map[string]interface{}{
+		"total_failures_analyzed": len(cands),
+		"by_source":               bySource,
+		"recommended_action":      "promote_high_frequency_candidates",
 	}
 }
 
@@ -115,6 +151,22 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 		res := s.RegisterScan(req.Passed, req.FailureReason)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(res)
+	})
+
+	mux.HandleFunc("/lab/experiment/run", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ArmID  string  `json:"arm_id"`
+			Reward float64 `json:"reward"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		res := s.RunExperiment(req.ArmID, req.Reward)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(res)
+	})
+
+	mux.HandleFunc("/lab/analyze/failures", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(s.AnalyzeFailures())
 	})
 
 	mux.HandleFunc("/v2/lab/insights", func(w http.ResponseWriter, _ *http.Request) {

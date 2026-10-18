@@ -35,7 +35,9 @@ type RepairResult struct {
 
 // Service implements Module 5: RAE-Phoenix (Impact Graph, Behavioral Parity & 3-Attempt Closed-Loop Repair).
 type Service struct {
-	MaxAttempts int
+	MaxAttempts       int
+	OnRepairFailure   func(reason string)
+	OnRepairCompleted func(repaired bool, reason string)
 }
 
 // NewService creates a new RAE-Phoenix service with PHOENIX_MAX_ATTEMPTS default = 3.
@@ -97,6 +99,9 @@ func (s *Service) ExecuteClosedLoopRepair(baselineOut string, candidateAttempts 
 		used++
 		parity := s.VerifyBehavioralParity(baselineOut, 0, cand, 0)
 		if parity.ParityVerified {
+			if s.OnRepairCompleted != nil {
+				s.OnRepairCompleted(true, "")
+			}
 			return RepairResult{
 				Status:       "REPAIRED",
 				AttemptsUsed: used,
@@ -106,6 +111,13 @@ func (s *Service) ExecuteClosedLoopRepair(baselineOut string, candidateAttempts 
 			}
 		}
 	}
+	reason := "Exceeded max repair attempts; rolled back and recorded as FAILED_BUT_INFORMATIVE"
+	if s.OnRepairFailure != nil {
+		s.OnRepairFailure(reason)
+	}
+	if s.OnRepairCompleted != nil {
+		s.OnRepairCompleted(false, "PHOENIX_ROLLBACK")
+	}
 	return RepairResult{
 		Status:       "ROLLED_BACK_ESCALATED_L3",
 		AttemptsUsed: used,
@@ -113,7 +125,7 @@ func (s *Service) ExecuteClosedLoopRepair(baselineOut string, candidateAttempts 
 		RolledBack:   true,
 		Parity: ParityResult{
 			ParityVerified: false,
-			Reason:         "Exceeded max repair attempts; rolled back and recorded as FAILED_BUT_INFORMATIVE",
+			Reason:         reason,
 		},
 	}
 }
