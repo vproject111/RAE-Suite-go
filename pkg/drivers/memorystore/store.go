@@ -113,7 +113,7 @@ func (s *UnifiedStore) QueryMemories(_ context.Context, filter ports.QueryFilter
 		strategy = "hybrid"
 	}
 	qTrim := strings.TrimSpace(filter.Query)
-	isWildcard := qTrim == "*" || qTrim == ""
+	isWildcard := qTrim == "*" || (qTrim == "" && len(filter.QueryVector) == 0)
 
 	var results []models.ScoredMemoryItem
 	for _, m := range s.memories {
