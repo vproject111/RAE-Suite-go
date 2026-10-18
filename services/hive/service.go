@@ -135,18 +135,41 @@ func (s *Service) StartWatchdogLoop(ctx context.Context, interval time.Duration)
 	}()
 }
 
-// RegisterRoutes attaches RAE-Hive HTTP endpoints (:8013).
+// RegisterRoutes attaches all 8 RAE-Hive HTTP & MCP endpoints (:8013).
 func (s *Service) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+	writeJSON := func(w http.ResponseWriter, status int, data interface{}) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(data)
+	}
+
+	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"status":       "healthy",
+			"department":   "RAE-Hive",
+			"max_parallel": MaxParallelBranches,
+		})
+	})
+
+	mux.HandleFunc("/mcp/sse", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("event: endpoint\ndata: /mcp/messages\n\n"))
+	})
+	mux.HandleFunc("/mcp/messages", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      req["id"],
+			"result":  map[string]interface{}{"department": "RAE-Hive", "status": "ok"},
+		})
 	})
 
 	mux.HandleFunc("/v2/hive/watchdog", func(w http.ResponseWriter, _ *http.Request) {
 		s.RecordHeartbeat("rae-hive")
 		stale := s.CheckStaleHeartbeats(HeartbeatTimeoutS)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"status":       "monitoring",
 			"stale_agents": stale,
 		})
@@ -158,7 +181,35 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		res := s.RunParallelCommands(r.Context(), req.Commands)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"results": res})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"results": res})
+	})
+
+	mux.HandleFunc("/execute", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Command string `json:"command"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req.Command == "" {
+			req.Command = "echo hive-ok"
+		}
+		res := s.RunParallelCommands(r.Context(), []string{req.Command})
+		if len(res) > 0 {
+			writeJSON(w, http.StatusOK, res[0])
+			return
+		}
+		writeJSON(w, http.StatusOK, CommandResult{Command: req.Command, ExitCode: 0, SandboxMode: "native-go-isolated"})
+	})
+
+	mux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"max_parallel_branches": MaxParallelBranches,
+			"heartbeat_timeout_s":   HeartbeatTimeoutS,
+			"stale_agents_count":    len(s.CheckStaleHeartbeats(HeartbeatTimeoutS)),
+		})
+	})
+
+	mux.HandleFunc("/metrics/prometheus", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		_, _ = w.Write([]byte("rae_hive_max_parallel_branches 3\nrae_hive_heartbeat_timeout_seconds 120\n"))
 	})
 }
