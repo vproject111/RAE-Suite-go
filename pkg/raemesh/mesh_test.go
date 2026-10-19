@@ -49,4 +49,10 @@ func TestCMTCapabilityTokensAndMeshReceive(t *testing.T) {
 	if err != nil || syncRes["synced_memories"] != 1 {
 		t.Fatalf("SyncWithPeer failed: %+v, err=%v", syncRes, err)
 	}
+
+	// Test 16-bucket Merkle delta diffing
+	changed, delta, snap, err := engine.DiffMerkleBuckets(ctx, "p1", map[string]string{})
+	if err != nil || len(changed) != 1 || len(delta) != 1 || len(snap.BucketHashes) != 16 {
+		t.Fatalf("DiffMerkleBuckets unexpected result: changed=%v delta=%d buckets=%d err=%v", changed, len(delta), len(snap.BucketHashes), err)
+	}
 }

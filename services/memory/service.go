@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vproject111/RAE-Suite-go/pkg/drivers/agnostic"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/models"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/ports"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/reflection"
@@ -18,30 +19,35 @@ import (
 )
 
 // Service implements Module 3: RAE-Memory (8 Storage Layers, L1-L4 Reflection,
-// 9 Search Strategies, Procedural Oracle, Sycon Knowledge Resolve, OutboxDispatcher & RAE-Mesh).
+// 9 Search Strategies, Procedural Oracle, Sycon Knowledge Resolve, OutboxDispatcher, AgnosticStorageBroker & RAE-Mesh).
 type Service struct {
 	store     ports.MemoryStoragePort
+	broker    *agnostic.AgnosticStorageBroker
 	outbox    ports.OutboxQueuePort
 	reflector *reflection.Coordinator
 	gateway   *search.LogicGateway
 	mesh      *raemesh.MeshEngine
 	guard     *security.HardFramesGuard
 	scrubber  *workflows.IngestionPIIScrubber
+	scheduler *BackgroundScheduler
 }
 
-// NewService constructs a full 8-layer RAE-Memory Service.
+// NewService constructs a full 8-layer database-agnostic RAE-Memory Service.
 func NewService(store ports.MemoryStoragePort, outbox ports.OutboxQueuePort, guard *security.HardFramesGuard) *Service {
 	if guard == nil {
 		guard = security.NewHardFramesGuard("")
 	}
+	broker := agnostic.NewAgnosticStorageBroker(store)
 	return &Service{
-		store:     store,
+		store:     broker,
+		broker:    broker,
 		outbox:    outbox,
 		reflector: reflection.NewCoordinator(),
 		gateway:   search.NewLogicGateway(nil),
-		mesh:      raemesh.NewMeshEngine(store, guard),
+		mesh:      raemesh.NewMeshEngine(broker, guard),
 		guard:     guard,
 		scrubber:  workflows.NewIngestionPIIScrubber(),
+		scheduler: &BackgroundScheduler{Running: true, IntervalSec: 60, LastRunAt: time.Now().UTC()},
 	}
 }
 
@@ -262,11 +268,13 @@ func (s *Service) StartBackgroundWorkers(ctx context.Context, interval time.Dura
 // RegisterRoutes attaches all RAE-Memory v2, Procedural, Reflection, Sycon, RAE-Mesh, and 19 Extended Router groups (:8000).
 func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 	s.RegisterExtendedRoutes(mux)
+	s.registerV45Routes(mux)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"status":  "healthy",
-			"version": "4.3.0",
-			"layers":  models.AllMemoryLayers(),
+			"status":          "healthy",
+			"version":         "4.5.0",
+			"storage_backend": string(s.broker.ActiveBackend()),
+			"layers":          models.AllMemoryLayers(),
 		})
 	})
 
@@ -298,6 +306,7 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 				writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 				return
 			}
+			s.OnMemoryStoredHook(r.Context(), &item)
 			if s.outbox != nil {
 				_ = s.outbox.EnqueueOutbox(r.Context(), &ports.OutboxEvent{
 					EventType: "MEMORY_STORED",

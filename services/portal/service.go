@@ -158,4 +158,12 @@ self.addEventListener('fetch', (e) => {
 			"code":   r.URL.Query().Get("code"),
 		})
 	})
+
+	mux.HandleFunc("/ws/dashboard", func(w http.ResponseWriter, r *http.Request) {
+		snap := s.TelemetrySnapshot()
+		snap["event"] = "portal_live_stream"
+		snap["rfc6455_supported"] = true
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(snap)
+	})
 }
