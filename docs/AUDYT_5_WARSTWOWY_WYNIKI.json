@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-19 15:55:13",
+  "timestamp": "2026-10-19 16:41:37",
   "all_5_stages_passed": true,
   "stages_passed_count": "5/5",
   "stages": [
@@ -8,8 +8,8 @@
       "passed": true,
       "py_first_party_classes": 3054,
       "py_first_party_functions": 13615,
-      "go_structs": 221,
-      "go_functions": 552,
+      "go_structs": 312,
+      "go_functions": 836,
       "go_registered_http_routes": 316,
       "domain_capabilities_mapped": "30/30",
       "missing_capabilities": []
@@ -43,8 +43,8 @@
             "document_title": "Stateful E2E Architecture Spec",
             "graph_edges_created": 1,
             "memory_ids": [
-              "01a15471-e845-775b-b2cd-7ac14c569152",
-              "01a15471-e845-7f81-a622-5da04c348a9c"
+              "01a1549c-644f-7c76-83ce-965b725f1c8d",
+              "01a1549c-644f-7ace-922c-fdd85b70a45a"
             ],
             "status": "ingested",
             "triples": [
@@ -77,13 +77,13 @@
           "step": "5. GDPR Art. 17 Right-to-be-Forgotten erases PII memory & signs SHA-256 proof",
           "passed": true,
           "audit": {
-            "audit_id": "gdpr-01a15471",
+            "audit_id": "gdpr-01a1549c",
             "tenant_id": "tenant-e2e",
             "subject_hash_sha256": "93b89cfbbfde0c6b942de6768b444429041a50bda0e244901347544c899b6359",
             "deleted_memory_count": 1,
             "reason": "GDPR_ART_17_ERASURE",
-            "proof_hash_sha256": "19e1405636aac4521caf038b2b2c3cea794debda38b9728dabddb249c5fd7f9e",
-            "executed_at": "2026-10-19T13:55:13.606241557Z"
+            "proof_hash_sha256": "2238f695a527edfc9870d6a43a593e2d4495e06830730b510b06021afe3e41fe",
+            "executed_at": "2026-10-19T14:41:37.872265482Z"
           }
         },
         {

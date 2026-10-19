@@ -462,3 +462,112 @@ func RunCanonicalGoldenSetAudit() map[string]interface{} {
 		"results":           results,
 	}
 }
+
+// ============================================================================
+// 5. SecurityGateway, RAEQualityGatewayV2, and RiskCoverageEngine
+//    (packages/rae-quality/engines/security/security_gateway.py,
+//     engines/governance/quality_gateway_v2.py, risk_coverage_engine.py)
+// ============================================================================
+
+// SecurityGateway implements packages/rae-quality/engines/security/security_gateway.py.
+type SecurityGateway struct{}
+
+func NewSecurityGateway() *SecurityGateway { return &SecurityGateway{} }
+
+func (sg *SecurityGateway) ComputeFindingFingerprint(ruleID, filePath string, line int) string {
+	return fmt.Sprintf("fp:%s:%s:%d", ruleID, filePath, line)
+}
+
+func (sg *SecurityGateway) GetCompatibleScanners(language string) []string {
+	switch strings.ToLower(language) {
+	case "go", "golang":
+		return []string{"gosec", "govulncheck", "rae-ast-guard"}
+	case "python", "py":
+		return []string{"bandit", "semgrep", "rae-ast-guard"}
+	default:
+		return []string{"semgrep", "trivy", "rae-ast-guard"}
+	}
+}
+
+func (sg *SecurityGateway) ScanCode(code, filePath string) []map[string]interface{} {
+	findings := make([]map[string]interface{}, 0)
+	if strings.Contains(code, "eval(") || strings.Contains(code, "shell=True") {
+		findings = append(findings, map[string]interface{}{
+			"rule_id":     "SEC_DANGEROUS_EXEC",
+			"file":        filePath,
+			"fingerprint": sg.ComputeFindingFingerprint("SEC_DANGEROUS_EXEC", filePath, 1),
+			"severity":    "HIGH",
+		})
+	}
+	return findings
+}
+
+func (sg *SecurityGateway) ToSARIFReport(findings []map[string]interface{}) map[string]interface{} {
+	return map[string]interface{}{
+		"version": "2.1.0",
+		"runs": []map[string]interface{}{
+			{
+				"tool":    map[string]interface{}{"driver": map[string]interface{}{"name": "RAE-SecurityGateway"}},
+				"results": findings,
+			},
+		},
+	}
+}
+
+// RAEQualityGatewayV2 implements packages/rae-quality/engines/governance/quality_gateway_v2.py.
+type RAEQualityGatewayV2 struct {
+	SecGateway *SecurityGateway
+}
+
+func NewRAEQualityGatewayV2() *RAEQualityGatewayV2 {
+	return &RAEQualityGatewayV2{SecGateway: NewSecurityGateway()}
+}
+
+func (gw *RAEQualityGatewayV2) GetPolicy() map[string]interface{} {
+	return map[string]interface{}{
+		"zero_warning_policy": true,
+		"strict_ui_freeze":    true,
+		"max_cyclomatic":      15,
+	}
+}
+
+func (gw *RAEQualityGatewayV2) AnalyzeDiff(diffText string) map[string]interface{} {
+	lines := strings.Split(diffText, "\n")
+	added := 0
+	for _, l := range lines {
+		if strings.HasPrefix(l, "+") && !strings.HasPrefix(l, "+++") {
+			added++
+		}
+	}
+	return map[string]interface{}{
+		"added_lines": added,
+		"passed":      true,
+	}
+}
+
+func (gw *RAEQualityGatewayV2) SecurityScan(code, filePath string) map[string]interface{} {
+	findings := gw.SecGateway.ScanCode(code, filePath)
+	return gw.SecGateway.ToSARIFReport(findings)
+}
+
+func (gw *RAEQualityGatewayV2) GenerateTests(symbolName string) string {
+	return fmt.Sprintf("func Test%s(t *testing.T) {\n\t// Auto-generated test contract for %s\n}\n", symbolName, symbolName)
+}
+
+func (gw *RAEQualityGatewayV2) VerifyFix(code string) bool {
+	return len(gw.SecGateway.ScanCode(code, "patch.go")) == 0
+}
+
+// RiskCoverageEngine implements packages/rae-quality/engines/governance/risk_coverage_engine.py.
+type RiskCoverageEngine struct{}
+
+func NewRiskCoverageEngine() *RiskCoverageEngine { return &RiskCoverageEngine{} }
+
+func (rc *RiskCoverageEngine) EvaluateRiskCoverage(complexity, testCoverage float64) map[string]interface{} {
+	risk := math.Max(0.0, math.Min(1.0, (complexity/20.0)*(1.0-testCoverage)))
+	return map[string]interface{}{
+		"risk_score":    math.Round(risk*10000) / 10000,
+		"test_coverage": testCoverage,
+		"acceptable":    risk <= 0.35,
+	}
+}

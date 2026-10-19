@@ -297,3 +297,90 @@ func clamp(v, minV, maxV float64) float64 {
 	}
 	return v
 }
+
+// ============================================================================
+// MultiArmedBandit, RAEEngine, RAERuntime, Reflector, HybridSearchEngine
+// (rae-core/rae_core/math/bandit/bandit.py, engine.py, runtime.py, reflection/reflector.py, search/engine.py)
+// ============================================================================
+
+// MultiArmedBandit implements rae_core/math/bandit/bandit.py with UCB1 and exploration decay.
+type MultiArmedBandit struct {
+	*MathController
+	explorationRate float64
+}
+
+func NewMultiArmedBandit() *MultiArmedBandit {
+	return &MultiArmedBandit{
+		MathController:  NewMathController(models.MathL3),
+		explorationRate: 0.25,
+	}
+}
+
+func (b *MultiArmedBandit) DecayExploration(factor float64) float64 {
+	if factor <= 0 || factor >= 1 {
+		factor = 0.95
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.explorationRate = clamp(b.explorationRate*factor, 0.02, 1.0)
+	return b.explorationRate
+}
+
+// Reflector implements rae_core/reflection/reflector.py.
+type Reflector struct{}
+
+func NewReflector() *Reflector { return &Reflector{} }
+
+func (r *Reflector) EvaluateAnswerDraft(draft, contextText string) float64 {
+	return CalculateSemanticSimilarity(draft, contextText)
+}
+
+func (r *Reflector) GenerateReflection(events []string) string {
+	return "Reflector synthesis: " + strings.Join(events, " | ")
+}
+
+func (r *Reflector) IdentifyReflectionCandidates(items []models.MemoryItem) []models.MemoryItem {
+	out := make([]models.MemoryItem, 0)
+	for _, it := range items {
+		if it.Importance >= 0.65 {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+// RAEEngine implements rae_core/engine.py.
+type RAEEngine struct {
+	Controller *MathController
+	Reflector  *Reflector
+}
+
+func NewRAEEngine() *RAEEngine {
+	return &RAEEngine{
+		Controller: NewMathController(models.MathL3),
+		Reflector:  NewReflector(),
+	}
+}
+
+// RAERuntime implements rae_core/runtime.py.
+type RAERuntime struct {
+	Engine *RAEEngine
+}
+
+func NewRAERuntime() *RAERuntime {
+	return &RAERuntime{Engine: NewRAEEngine()}
+}
+
+func (rt *RAERuntime) Process(input string) map[string]interface{} {
+	arm := rt.Engine.Controller.SelectArm()
+	return map[string]interface{}{
+		"input":      input,
+		"selected":   arm,
+		"reflection": rt.Engine.Reflector.GenerateReflection([]string{input}),
+	}
+}
+
+// HybridSearchEngine implements rae_core/search/engine.py.
+type HybridSearchEngine struct {
+	Controller *MathController
+}

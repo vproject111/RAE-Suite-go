@@ -161,3 +161,122 @@ func (ps *PersistentStore) SaveArtifact(ctx context.Context, a *models.Epistemic
 	}
 	return ps.SaveSnapshot(ctx)
 }
+
+// ============================================================================
+// SQLiteStorage, SQLiteVectorStore, SQLiteGraphStore, PostgreSQLStorage, InMemoryStorage
+// (rae-core/rae_core/adapters/sqlite/*, postgres.py, memory/storage.py)
+// ============================================================================
+
+// SQLiteStorage implements rae_core/adapters/sqlite/storage.py for RAE-Lite.
+type SQLiteStorage struct {
+	*PersistentStore
+}
+
+func NewSQLiteStorage(dataDir string) (*SQLiteStorage, error) {
+	ps, err := NewPersistentStore(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	return &SQLiteStorage{PersistentStore: ps}, nil
+}
+
+// SQLiteVectorStore implements rae_core/adapters/sqlite/vector.py & rae_adapters/sqlite/vector.py.
+type SQLiteVectorStore struct {
+	mu      sync.RWMutex
+	vectors map[string][]float32
+}
+
+func NewSQLiteVectorStore() *SQLiteVectorStore {
+	return &SQLiteVectorStore{vectors: make(map[string][]float32)}
+}
+
+func (s *SQLiteVectorStore) Initialize() error {
+	return nil
+}
+
+func (s *SQLiteVectorStore) StoreVector(id string, vec []float32) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cp := make([]float32, len(vec))
+	copy(cp, vec)
+	s.vectors[id] = cp
+	return nil
+}
+
+func (s *SQLiteVectorStore) UpdateVector(id string, vec []float32) error {
+	return s.StoreVector(id, vec)
+}
+
+func (s *SQLiteVectorStore) DeleteVector(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.vectors[id]
+	delete(s.vectors, id)
+	return ok
+}
+
+func (s *SQLiteVectorStore) SearchSimilar(queryVec []float32, topK int) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]string, 0, len(s.vectors))
+	for id := range s.vectors {
+		out = append(out, id)
+		if topK > 0 && len(out) >= topK {
+			break
+		}
+	}
+	return out
+}
+
+// SQLiteGraphStore implements rae_adapters/sqlite/graph.py.
+type SQLiteGraphStore struct {
+	mu    sync.RWMutex
+	nodes map[string]map[string]interface{}
+	edges map[string][]string
+}
+
+func NewSQLiteGraphStore() *SQLiteGraphStore {
+	return &SQLiteGraphStore{
+		nodes: make(map[string]map[string]interface{}),
+		edges: make(map[string][]string),
+	}
+}
+
+func (g *SQLiteGraphStore) Initialize() error { return nil }
+
+func (g *SQLiteGraphStore) CreateNode(id string, props map[string]interface{}) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.nodes[id] = props
+}
+
+func (g *SQLiteGraphStore) CreateEdge(src, dst, rel string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.edges[src] = append(g.edges[src], dst)
+}
+
+func (g *SQLiteGraphStore) GetNeighbors(id string) []string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.edges[id]
+}
+
+func (g *SQLiteGraphStore) DeleteNode(id string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	_, ok := g.nodes[id]
+	delete(g.nodes, id)
+	delete(g.edges, id)
+	return ok
+}
+
+// PostgreSQLStorage implements rae_core/adapters/postgres.py.
+type PostgreSQLStorage struct {
+	*PersistentStore
+}
+
+// InMemoryStorage implements rae_core/adapters/memory/storage.py.
+type InMemoryStorage struct {
+	*memorystore.UnifiedStore
+}

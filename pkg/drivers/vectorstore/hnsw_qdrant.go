@@ -182,3 +182,134 @@ func (q *QdrantClient) UpsertPoint(ctx context.Context, id string, namedVectors 
 	}
 	return nil
 }
+
+// ============================================================================
+// QdrantVectorStore, InMemoryVectorStore, and InMemoryCache
+// (rae-core/rae_core/adapters/qdrant.py, memory/vector.py, memory/cache.py)
+// ============================================================================
+
+// QdrantVectorStore implements rae_core/adapters/qdrant.py & rae_adapters/qdrant.py with Named Vectors.
+type QdrantVectorStore struct {
+	Client *QdrantClient
+	Index  *HNSWIndex
+}
+
+func NewQdrantVectorStore(baseURL, collection string) *QdrantVectorStore {
+	return &QdrantVectorStore{
+		Client: NewQdrantClient(baseURL, collection),
+		Index:  NewHNSWIndex(),
+	}
+}
+
+func (qs *QdrantVectorStore) EnsureVectorConfig(spaces map[string]int) map[string]int {
+	qs.Index.mu.Lock()
+	defer qs.Index.mu.Unlock()
+	for sp, dim := range spaces {
+		qs.Index.dims[sp] = dim
+	}
+	return qs.Index.dims
+}
+
+func (qs *QdrantVectorStore) StoreVector(space, id string, vec []float32) error {
+	return qs.Index.Upsert(space, id, vec)
+}
+
+func (qs *QdrantVectorStore) BatchStoreVectors(space string, batch map[string][]float32) (int, error) {
+	stored := 0
+	for id, v := range batch {
+		if err := qs.Index.Upsert(space, id, v); err != nil {
+			return stored, err
+		}
+		stored++
+	}
+	return stored, nil
+}
+
+func (qs *QdrantVectorStore) GetVector(space, id string) ([]float32, bool) {
+	if space == "" {
+		space = "dense"
+	}
+	qs.Index.mu.RLock()
+	defer qs.Index.mu.RUnlock()
+	if sm, ok := qs.Index.spaces[space]; ok {
+		v, exists := sm[id]
+		return v, exists
+	}
+	return nil, false
+}
+
+func (qs *QdrantVectorStore) UpdateVector(space, id string, vec []float32) error {
+	return qs.Index.Upsert(space, id, vec)
+}
+
+func (qs *QdrantVectorStore) DeleteVector(space, id string) bool {
+	if space == "" {
+		space = "dense"
+	}
+	qs.Index.mu.Lock()
+	defer qs.Index.mu.Unlock()
+	if sm, ok := qs.Index.spaces[space]; ok {
+		if _, exists := sm[id]; exists {
+			delete(sm, id)
+			return true
+		}
+	}
+	return false
+}
+
+func (qs *QdrantVectorStore) SearchSimilar(space string, queryVec []float32, topK int) ([]VectorHit, error) {
+	return qs.Index.Search(space, queryVec, topK)
+}
+
+// InMemoryVectorStore implements rae_adapters/memory/vector.py.
+type InMemoryVectorStore struct {
+	*QdrantVectorStore
+}
+
+func NewInMemoryVectorStore() *InMemoryVectorStore {
+	return &InMemoryVectorStore{QdrantVectorStore: NewQdrantVectorStore("", "in_memory")}
+}
+
+// InMemoryCache implements rae_core/adapters/memory/cache.py & rae_adapters/memory/cache.py.
+type InMemoryCache struct {
+	mu    sync.RWMutex
+	items map[string]interface{}
+}
+
+func NewInMemoryCache() *InMemoryCache {
+	return &InMemoryCache{items: make(map[string]interface{})}
+}
+
+func (c *InMemoryCache) Get(key string) (interface{}, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	v, ok := c.items[key]
+	return v, ok
+}
+
+func (c *InMemoryCache) Set(key string, val interface{}) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.items[key] = val
+}
+
+func (c *InMemoryCache) Delete(key string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.items[key]
+	delete(c.items, key)
+	return ok
+}
+
+func (c *InMemoryCache) Exists(key string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	_, ok := c.items[key]
+	return ok
+}
+
+func (c *InMemoryCache) Clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.items = make(map[string]interface{})
+}
