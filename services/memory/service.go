@@ -285,7 +285,8 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"status":          "healthy",
-			"version":         "4.7.0",
+			"version":         "5.3.0",
+			"engine":          "rae-suite-go",
 			"storage_backend": string(s.broker.ActiveBackend()),
 			"layers":          models.AllMemoryLayers(),
 		})
@@ -461,8 +462,12 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 		})
 	})
 
-	mux.HandleFunc("/v2/mesh/peers", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"peers": s.mesh.ListPeers()})
+	mux.HandleFunc("/v2/mesh/peers", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("format") == "object" {
+			writeJSON(w, http.StatusOK, map[string]interface{}{"peers": s.mesh.ListPeers()})
+			return
+		}
+		writeJSON(w, http.StatusOK, s.mesh.ListPeers())
 	})
 
 	mux.HandleFunc("/v2/mesh/sync", func(w http.ResponseWriter, r *http.Request) {

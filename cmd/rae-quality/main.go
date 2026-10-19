@@ -35,6 +35,6 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	svc.RegisterRoutes(mux)
-	log.Printf("RAE-Quality (Go Native v4.0) listening on :%s", port)
+	log.Printf("RAE-Quality (Go Native v5.3.0) listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, mux))
 }

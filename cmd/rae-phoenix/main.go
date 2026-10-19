@@ -16,6 +16,6 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	svc.RegisterRoutes(mux)
-	log.Printf("RAE-Phoenix (Go Native v4.0, max_attempts=%d) listening on :%s", svc.MaxAttempts, port)
+	log.Printf("RAE-Phoenix (Go Native v5.3.0, max_attempts=%d) listening on :%s", svc.MaxAttempts, port)
 	log.Fatal(http.ListenAndServe(":"+port, mux))
 }

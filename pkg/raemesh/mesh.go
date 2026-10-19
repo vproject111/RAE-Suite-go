@@ -22,12 +22,13 @@ import (
 
 // Peer represents a registered RAE-Mesh node (e.g., rae-host, node1-lumina, node2-julka, node3-piotrek).
 type Peer struct {
-	PeerID    string    `json:"peer_id"`
-	Name      string    `json:"name"`
-	URL       string    `json:"url"`
-	Transport string    `json:"transport"`
-	Status    string    `json:"status"`
-	LastSync  time.Time `json:"last_sync"`
+	PeerID        string    `json:"peer_id"`
+	Name          string    `json:"name"`
+	URL           string    `json:"url"`
+	Transport     string    `json:"transport"`
+	TransportType string    `json:"transport_type"`
+	Status        string    `json:"status"`
+	LastSync      time.Time `json:"last_sync"`
 }
 
 // CapabilityClaims represents the signed payload of a CMT (Consensual Memory Transfer) token.
@@ -64,35 +65,39 @@ func NewMeshEngine(store ports.MemoryStoragePort, guard *security.HardFramesGuar
 		store:  store,
 		guard:  guard,
 		crypto: NewE2EEncryption(""),
-		client: &http.Client{Timeout: 350 * time.Millisecond},
+		client: &http.Client{Timeout: 800 * time.Millisecond},
 	}
 	m.RegisterPeer(Peer{
-		PeerID:    "rae-host",
-		Name:      "Host Cloud",
-		URL:       "https://rae.dreamsoft.pro",
-		Transport: "http",
-		Status:    "active",
+		PeerID:        "rae-host",
+		Name:          "Host Cloud",
+		URL:           "https://rae.dreamsoft.pro",
+		Transport:     "http",
+		TransportType: "http",
+		Status:        "active",
 	})
 	m.RegisterPeer(Peer{
-		PeerID:    "node1-lumina",
-		Name:      "Node 1 Lumina",
-		URL:       "http://100.68.166.117:8000",
-		Transport: "http",
-		Status:    "active",
+		PeerID:        "node1-lumina",
+		Name:          "Node 1 Lumina",
+		URL:           "http://100.68.166.117:8000",
+		Transport:     "http",
+		TransportType: "http",
+		Status:        "active",
 	})
 	m.RegisterPeer(Peer{
-		PeerID:    "node2-julka",
-		Name:      "Node 2 Julka",
-		URL:       "http://100.70.32.40:8000",
-		Transport: "http",
-		Status:    "active",
+		PeerID:        "node2-julka",
+		Name:          "Node 2 Julka",
+		URL:           "http://100.70.32.40:8000",
+		Transport:     "http",
+		TransportType: "http",
+		Status:        "standby",
 	})
 	m.RegisterPeer(Peer{
-		PeerID:    "node3-piotrek",
-		Name:      "Node 3 Piotrek",
-		URL:       "http://172.30.15.11:11434",
-		Transport: "http",
-		Status:    "active",
+		PeerID:        "node3-piotrek",
+		Name:          "Node 3 Piotrek",
+		URL:           "http://172.30.15.11:11434",
+		Transport:     "http",
+		TransportType: "http",
+		Status:        "standby",
 	})
 	return m
 }
@@ -124,6 +129,12 @@ func (m *MeshEngine) RegisterPeer(p Peer) {
 	defer m.mu.Unlock()
 	if p.Status == "" {
 		p.Status = "active"
+	}
+	if p.Transport == "" {
+		p.Transport = "http"
+	}
+	if p.TransportType == "" {
+		p.TransportType = p.Transport
 	}
 	m.peers[p.PeerID] = p
 }
@@ -356,11 +367,15 @@ func (m *MeshEngine) SyncWithPeer(ctx context.Context, peerID, project string) (
 	m.mu.Unlock()
 
 	remotePushed := false
-	if strings.HasPrefix(p.URL, "http://127.0.0.1") || strings.HasPrefix(p.URL, "http://localhost") {
+	if strings.HasPrefix(p.URL, "http://") || strings.HasPrefix(p.URL, "https://") {
+		batch := allExportable
+		if len(batch) > 50 {
+			batch = batch[:50]
+		}
 		tok, _ := m.GenerateCapabilityToken("local-mesh-node", "mesh:write", 10*time.Minute)
 		body, _ := json.Marshal(map[string]interface{}{
 			"token":    tok,
-			"memories": allExportable,
+			"memories": batch,
 		})
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(p.URL, "/")+"/v2/mesh/sync/receive", bytes.NewReader(body))
 		if err == nil {

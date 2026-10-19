@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"math"
+	"os"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/vproject111/RAE-Suite-go/pkg/drivers/postgres"
+	"github.com/vproject111/RAE-Suite-go/pkg/drivers/vectorstore"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/epistemic"
 	raemath "github.com/vproject111/RAE-Suite-go/pkg/raecore/math"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/models"
@@ -19,17 +22,21 @@ import (
 
 // UnifiedStore implements MemoryStoragePort, EpistemicStoragePort, and OutboxQueuePort
 // in pure Go (CGO_ENABLED=0) with Named Vectors HNSW-style search, 8 memory layers,
-// 9 search strategies, Epistemic DAG, and SKIP-LOCKED transactional outbox.
+// 9 search strategies, Epistemic DAG, SKIP-LOCKED transactional outbox, and live PostgreSQL/Qdrant write-through.
 type UnifiedStore struct {
-	mu         sync.RWMutex
-	memories   map[string]models.MemoryItem
-	graphEdges map[string][]models.ArtifactEdge
-	artifacts  map[string]models.EpistemicArtifact
-	dagEdges   []models.ArtifactEdge
-	journal    []models.EpistemicJournalEvent
-	outbox     []ports.OutboxEvent
-	mathCtrl   *raemath.MathController
-	guard      *security.HardFramesGuard
+	mu           sync.RWMutex
+	memories     map[string]models.MemoryItem
+	graphEdges   map[string][]models.ArtifactEdge
+	artifacts    map[string]models.EpistemicArtifact
+	dagEdges     []models.ArtifactEdge
+	journal      []models.EpistemicJournalEvent
+	outbox       []ports.OutboxEvent
+	mathCtrl     *raemath.MathController
+	guard        *security.HardFramesGuard
+	pgClient     *postgres.PGWireClient
+	qdrantClient *vectorstore.QdrantHTTPClient
+	embedClient  *vectorstore.LiveEmbeddingClient
+	liveEnabled  bool
 }
 
 // NewUnifiedStore creates a new database-agnostic store instance.
@@ -40,16 +47,46 @@ func NewUnifiedStore(mathCtrl *raemath.MathController, guard *security.HardFrame
 	if guard == nil {
 		guard = security.NewHardFramesGuard("")
 	}
-	return &UnifiedStore{
+	s := &UnifiedStore{
 		memories:   make(map[string]models.MemoryItem),
 		graphEdges: make(map[string][]models.ArtifactEdge),
 		artifacts:  make(map[string]models.EpistemicArtifact),
 		mathCtrl:   mathCtrl,
 		guard:      guard,
 	}
+	if os.Getenv("POSTGRES_HOST") != "" || os.Getenv("QDRANT_HOST") != "" || os.Getenv("RAE_LIVE_DB") == "1" {
+		_ = s.EnableLiveBackends()
+	}
+	return s
 }
 
-// StoreMemory validates ISO 27000 rules, normalizes among the 8 layers, and persists the memory.
+// EnableLiveBackends connects UnifiedStore to live PostgreSQL (:5432), Qdrant (:6333), and Ollama (:11434),
+// and hydrates existing memories from PostgreSQL into memory.
+func (s *UnifiedStore) EnableLiveBackends() int {
+	s.mu.Lock()
+	s.pgClient = postgres.NewPGWireClientFromEnv()
+	s.qdrantClient = vectorstore.NewQdrantHTTPClient("", "memories")
+	s.embedClient = vectorstore.NewLiveEmbeddingClient()
+	s.liveEnabled = true
+	pg := s.pgClient
+	s.mu.Unlock()
+
+	if pg == nil {
+		return 0
+	}
+	rows, err := pg.LoadAllMemories(5000)
+	if err != nil || len(rows) == 0 {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, m := range rows {
+		s.memories[m.ID] = m
+	}
+	return len(rows)
+}
+
+// StoreMemory validates ISO 27000 rules, normalizes among the 8 layers, and persists the memory in RAM + PostgreSQL + Qdrant.
 func (s *UnifiedStore) StoreMemory(_ context.Context, item *models.MemoryItem) error {
 	if item.ID == "" {
 		item.ID = models.GenerateUUIDv7()
@@ -85,7 +122,35 @@ func (s *UnifiedStore) StoreMemory(_ context.Context, item *models.MemoryItem) e
 
 	s.mu.Lock()
 	s.memories[item.ID] = *item
+	live := s.liveEnabled
+	pg := s.pgClient
+	qd := s.qdrantClient
+	emb := s.embedClient
+	cp := *item
 	s.mu.Unlock()
+
+	if live && item.InfoClass != models.InfoRestricted {
+		if pg != nil {
+			_ = pg.UpsertMemoryRow(&cp)
+		}
+		if qd != nil {
+			var vec []float32
+			if len(cp.Embedding) > 0 {
+				vec = cp.Embedding
+			} else if emb != nil {
+				if liveVec, err := emb.Embed(cp.Content); err == nil {
+					vec = liveVec
+				}
+			}
+			if len(vec) > 0 {
+				_ = qd.UpsertPoint(cp.ID, "", vec, map[string]interface{}{
+					"content": cp.Content,
+					"layer":   string(cp.Layer),
+					"project": cp.Project,
+				})
+			}
+		}
+	}
 	return nil
 }
 
@@ -104,14 +169,28 @@ func (s *UnifiedStore) GetMemory(_ context.Context, id string) (*models.MemoryIt
 	return &cp, nil
 }
 
-// DeleteMemory removes a memory by ID.
+// DeleteMemory removes a memory by ID from RAM, PostgreSQL, and Qdrant.
 func (s *UnifiedStore) DeleteMemory(_ context.Context, id string) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.memories[id]; !ok {
+	_, ok := s.memories[id]
+	if !ok {
+		s.mu.Unlock()
 		return errors.New("memory not found")
 	}
 	delete(s.memories, id)
+	live := s.liveEnabled
+	pg := s.pgClient
+	qd := s.qdrantClient
+	s.mu.Unlock()
+
+	if live {
+		if pg != nil {
+			_ = pg.DeleteMemoryRow(id)
+		}
+		if qd != nil {
+			_ = qd.DeletePoint(id)
+		}
+	}
 	return nil
 }
 
