@@ -381,6 +381,27 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 		})
 	})
 
+	mux.HandleFunc("/v2/phoenix/behavior-check", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Baseline      BehaviorSnapshot `json:"baseline"`
+			Candidate     BehaviorSnapshot `json:"candidate"`
+			RequiredRegex string           `json:"required_regex"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		writeJSON(w, http.StatusOK, CompareBehavior6D(req.Baseline, req.Candidate, req.RequiredRegex))
+	})
+
+	mux.HandleFunc("/v2/phoenix/post-mortem", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			SessionID   string   `json:"session_id"`
+			Attempts    int      `json:"attempts"`
+			ErrorTraces []string `json:"error_traces"`
+			CostUSD     float64  `json:"cost_usd"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		writeJSON(w, http.StatusOK, AnalyzePostMortem(req.SessionID, req.Attempts, req.ErrorTraces, req.CostUSD))
+	})
+
 	mux.HandleFunc("/metrics/prometheus", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = w.Write([]byte("rae_phoenix_max_attempts 3\nrae_phoenix_repairs_total 14\n"))

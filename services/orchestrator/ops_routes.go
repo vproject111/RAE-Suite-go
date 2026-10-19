@@ -324,4 +324,40 @@ func (s *Service) registerOpsRoutes(mux *http.ServeMux) {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		writeJSON(w, http.StatusOK, hermesBridge.Dispatch(req))
 	})
+
+	// 15. GitOps Daemon (Branch, Signed Commit & Pull Request Spec)
+	gitopsDaemon := ops.NewGitOpsDaemon()
+	mux.HandleFunc("/v2/ops/gitops", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			TaskID    string `json:"task_id"`
+			Summary   string `json:"summary"`
+			Rationale string `json:"rationale"`
+			Author    string `json:"author"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		writeJSON(w, http.StatusOK, gitopsDaemon.ExecuteGitOpsWorkflow(req.TaskID, req.Summary, req.Rationale, req.Author))
+	})
+
+	// 16. Project Phase Analyzer (SDLC Phase Cost/Token/Latency Aggregation)
+	mux.HandleFunc("/v2/ops/project-phases", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Project string           `json:"project"`
+			Entries []ops.PhaseEntry `json:"entries"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		writeJSON(w, http.StatusOK, ops.AnalyzeProjectPhases(req.Project, req.Entries))
+	})
+
+	// 17. RAE Global Search Engine (Federated across Memory, CRL, AuditLedger, Quality)
+	mux.HandleFunc("/v2/portal/global-search", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Query   string `json:"query"`
+			Project string `json:"project"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req.Query == "" {
+			req.Query = r.URL.Query().Get("query")
+		}
+		writeJSON(w, http.StatusOK, ops.ExecuteGlobalSearch(req.Query, req.Project))
+	})
 }
