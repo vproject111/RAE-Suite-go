@@ -15,10 +15,10 @@ import (
 )
 
 func (s *Service) registerV46Routes(mux *http.ServeMux) {
-	ibSelector := raemath.NewInformationBottleneckSelector(0.45)
-	temporalGraph := graph.NewTemporalGraphService()
-	provenanceSvc := security.NewContextProvenanceService()
-	meshCrypto := raemesh.NewE2EEncryption("")
+	ibSelector := s.ibSelector
+	temporalGraph := s.temporalGraph
+	provenanceSvc := s.provenanceSvc
+	meshCrypto := s.mesh.Crypto()
 
 	// G1: Information Bottleneck Context Selector (I(Z; Y) - beta * I(Z; X))
 	mux.HandleFunc("/v2/context/ib-select", func(w http.ResponseWriter, r *http.Request) {
