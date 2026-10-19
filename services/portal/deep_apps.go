@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/vproject111/RAE-Suite-go/pkg/raesdk"
 )
 
 // PDKnowledgeHubApp implements packages/rae-agentic-memory/rae-portal/apps/pd_knowledge_hub.py.
@@ -216,11 +218,13 @@ func (m *MissionControlApp) Render() string {
 
 // RAESuitePortal implements packages/rae-agentic-memory/rae-portal/main.py.
 type RAESuitePortal struct {
-	CurrentPage  string
-	KnowledgeHub *PDKnowledgeHubApp
-	Auditor      *CentralAuditorApp
-	PhoenixApp   *PhoenixRepairApp
-	MissionCtrl  *MissionControlApp
+	CurrentPage   string
+	KnowledgeHub  *PDKnowledgeHubApp
+	Auditor       *CentralAuditorApp
+	PhoenixApp    *PhoenixRepairApp
+	MissionCtrl   *MissionControlApp
+	TrayApp       *raesdk.DesktopTrayApp
+	NiceGUIDash   *raesdk.NiceGUIDashboardController
 }
 
 func NewRAESuitePortal() *RAESuitePortal {
@@ -230,11 +234,13 @@ func NewRAESuitePortal() *RAESuitePortal {
 		Auditor:      NewCentralAuditorApp(""),
 		PhoenixApp:   NewPhoenixRepairApp(),
 		MissionCtrl:  NewMissionControlApp(),
+		TrayApp:      raesdk.NewDesktopTrayApp("http://127.0.0.1:8000"),
+		NiceGUIDash:  raesdk.NewNiceGUIDashboardController(),
 	}
 }
 
 func (p *RAESuitePortal) DetectSystem() map[string]string {
-	return map[string]string{"runtime": "go", "suite": "RAE-Suite-go v4.9.0"}
+	return map[string]string{"runtime": "go", "suite": "RAE-Suite-go v5.2.0"}
 }
 
 func (p *RAESuitePortal) SetPage(page string) {
@@ -255,7 +261,13 @@ func (p *RAESuitePortal) Render() string {
 		return p.Auditor.Render()
 	case "phoenix":
 		return p.PhoenixApp.Render()
+	case "nicegui":
+		if p.NiceGUIDash != nil {
+			return p.NiceGUIDash.RenderLayoutHTML()
+		}
+		return p.MissionCtrl.Render()
 	default:
 		return p.MissionCtrl.Render()
 	}
 }
+

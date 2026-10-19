@@ -1,8 +1,17 @@
 package parity
 
+import (
+	"github.com/vproject111/RAE-Suite-go/pkg/drivers/postgres"
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/neural"
+)
+
 // BuildParityRegistry instantiates and wires all domain parity structs across RAE-Suite subsystems.
 func BuildParityRegistry() map[string]interface{} {
+	var _ *neural.ONNXRuntimeEngine
+	var _ *postgres.PGWireClient
 	return map[string]interface{}{
+		"ONNXRuntimeEngine": neural.NewONNXRuntimeEngine("default.onnx", 32),
+		"PGWireClient": postgres.NewPGWireClient("127.0.0.1:5432", "rae", "", "rae_memory"),
 		"ABTestRepository": NewABTestRepository(),
 		"AIReviewEngine": NewAIReviewEngine(),
 		"ASTInspector": NewASTInspector(),

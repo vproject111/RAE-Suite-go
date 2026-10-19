@@ -1,0 +1,60 @@
+config:
+  enable_reranking: true
+  top_k: 5
+description: Scientific Fact Checking Benchmark (Lite)
+memories:
+- id: sci_0
+  metadata:
+    importance: 0.9
+    source: PubMed
+  tags:
+  - scientific
+  - medical
+  - research
+  text: Treatment with 1,25-dihydroxyvitamin D3 (1,25(OH)2D3) of dendritic cells (DCs)
+    results in a reduced capacity to stimulate T cell proliferation.
+- id: sci_1
+  metadata:
+    importance: 0.9
+    source: PubMed
+  tags:
+  - scientific
+  - medical
+  - research
+  text: Hypercalcemia is a common complication of multiple myeloma.
+- id: sci_2
+  metadata:
+    importance: 0.9
+    source: PubMed
+  tags:
+  - scientific
+  - medical
+  - research
+  text: The JAK2 V617F mutation is present in most patients with polycythemia vera.
+- id: sci_3
+  metadata:
+    importance: 0.9
+    source: PubMed
+  tags:
+  - scientific
+  - medical
+  - research
+  text: Chronic obstructive pulmonary disease (COPD) is characterized by persistent
+    airflow limitation.
+- id: sci_4
+  metadata:
+    importance: 0.9
+    source: PubMed
+  tags:
+  - scientific
+  - medical
+  - research
+  text: Aspirin reduces the risk of cardiovascular events in patients with known vascular
+    disease.
+name: scifact_lite
+queries:
+- difficulty: easy
+  expected_source_ids:
+  - sci_0
+  query: Does vitamin D3 affect T cell proliferation?
+version: '1.0'
