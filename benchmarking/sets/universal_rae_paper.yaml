@@ -1,0 +1,694 @@
+description: Universal benchmark set from universal_rae_paper
+memories:
+- id: universal_rae_paper_0_0
+  metadata:
+    id: universal_rae_paper_0_0
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "RAE \u2013 Refleksyjny Silnik Agentowej Pami\u0119ci dla d\u0142ugoterminowych\
+    \ agent\xF3w LLM\nStreszczenie\n\nWsp\xF3\u0142czesne systemy oparte na du\u017C\
+    ych modelach j\u0119zykowych (LLM) zaczynaj\u0105 pe\u0142ni\u0107 rol\u0119 agent\xF3\
+    w wykonuj\u0105cych z\u0142o\u017Cone zadania: od programowania, przez planowanie\
+    \ eksperyment\xF3w badawczych, po wsparcie proces\xF3w administracyjnych i przemys\u0142\
+    owych. Pomimo rosn\u0105cej liczby narz\u0119dzi typu RAG (Retrieval-Augmented\
+    \ Generation) i prostych \u201Epami\u0119ci\u201D opartych na wektorowych bazach\
+    \ danych, dominuj\u0105cym problemem pozostaje brak"
+- id: universal_rae_paper_0_1
+  metadata:
+    id: universal_rae_paper_0_1
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: " prawdziwej, d\u0142ugoterminowej pami\u0119ci: agent po przepe\u0142nieniu\
+    \ kontekstu zapomina wcze\u015Bniejsze decyzje, nie jest w stanie stabilnie dzia\u0142\
+    a\u0107 przez tygodnie lub miesi\u0105ce, a koszty rosn\u0105 przez wielokrotne\
+    \ podawanie tych samych informacji.\n\nW pracy przedstawiam RAE \u2013 Reflective\
+    \ Agentic-memory Engine: otwarty, produkcyjny silnik pami\u0119ci zaprojektowany\
+    \ tak, aby nada\u0107 agentom LLM pami\u0119\u0107 przypominaj\u0105c\u0105 ludzk\u0105\
+    \ \u2013 warstwow\u0105, trwa\u0142\u0105 i refleksyjn\u0105. Rdzeniem RAE jest:\n\
+    \nczterowarstwowa architektura pami\u0119ci: pami"
+- id: universal_rae_paper_0_2
+  metadata:
+    id: universal_rae_paper_0_2
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "\u0119\u0107 epizodyczna, robocza, semantyczna oraz refleksyjna (d\u0142\
+    ugoterminowa warstwa wniosk\xF3w),\n\nsilnik refleksji oparty na wzorcu Actor\u2013\
+    Evaluator\u2013Reflector, traktowany jako element pami\u0119ci, a nie jedynie\
+    \ strategia promptowania,\n\nhybrydowy mechanizm GraphRAG \u0142\u0105cz\u0105\
+    cy wyszukiwanie wektorowe z grafem wiedzy,\n\nwielowarstwowa warstwa matematyczna,\
+    \ obejmuj\u0105ca:\n\u2013 modelowanie ca\u0142ego silnika pami\u0119ci jako procesu\
+    \ decyzyjnego Markowa (MDP),\n\u2013 uj\u0119cie selekcji kontekstu jako problemu\
+    \ w\u0105skiego gard\u0142a informacyjnego "
+- id: universal_rae_paper_0_3
+  metadata:
+    id: universal_rae_paper_0_3
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "(information bottleneck),\n\u2013 operator ewolucji grafu pami\u0119ci,\n\
+    \u2013 warstw\u0119 nagrody integruj\u0105c\u0105 jako\u015B\u0107, koszt i wymagania\
+    \ governance.\n\nRAE jest zaimplementowany jako vendor-agnostyczne, local-first\
+    \ API z profilami wdro\u017Ceniowymi od lekkiej konfiguracji na laptopie po klaster\
+    \ Kubernetes, z warstw\u0105 governance zgodn\u0105 z ISO/IEC 42001, wielodzier\u017C\
+    awczo\u015Bci\u0105 oraz telemetryj\u0105 opart\u0105 na OpenTelemetry. Projekt\
+    \ jest dost\u0119pny jako oprogramowanie open-source.\n\n1. Wprowadzenie\n\nDu\u017C\
+    e modele j\u0119zykowe pozwalaj\u0105 budowa"
+- id: universal_rae_paper_0_4
+  metadata:
+    id: universal_rae_paper_0_4
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "\u0107 coraz bardziej autonomiczne agenty. W praktyce jednak wi\u0119kszo\u015B\
+    \u0107 takich system\xF3w dzia\u0142a jak zaawansowany \u201Ekalkulator tekstowy\u201D\
+    \ z pami\u0119ci\u0105 kr\xF3tkoterminow\u0105 ograniczon\u0105 d\u0142ugo\u015B\
+    ci\u0105 kontekstu. Gdy kontekst si\u0119 ko\u0144czy:\n\nsystem zapomina wcze\u015B\
+    niejsze decyzje,\n\ntraci sp\xF3jno\u015B\u0107 d\u0142ugoterminow\u0105 (np.\
+    \ przestaje respektowa\u0107 wcze\u015Bniejsze ustalenia architektoniczne w projekcie),\n\
+    \nwymaga ci\u0105g\u0142ego \u201Eod\u015Bwie\u017Cania\u201D kontekstu, co podnosi\
+    \ koszty i z\u0142o\u017Cono\u015B\u0107 integracji.\n\nW realnych zastosowaniach\
+    \ \u2013 takich jak rozw\xF3j oprog"
+- id: universal_rae_paper_0_5
+  metadata:
+    id: universal_rae_paper_0_5
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "ramowania, planowanie bada\u0144 R&D, sterowanie produkcj\u0105 czy obs\u0142\
+    uga administracyjna \u2013 agenty musz\u0105:\n\npami\u0119ta\u0107 decyzje podj\u0119\
+    te dzie\u0144, tydzie\u0144 czy miesi\u0105c temu,\n\nby\u0107 w stanie uzasadni\u0107\
+    \ swoje dzia\u0142ania na podstawie historii,\n\ndzia\u0142a\u0107 w ramach konkretnych\
+    \ ogranicze\u0144 organizacyjnych, prawnych i kosztowych.\n\nCelem RAE jest dostarczenie\
+    \ brakuj\u0105cego elementu: silnika pami\u0119ci, kt\xF3ry:\n\njest wielowarstwowy,\
+    \ z osobn\u0105 warstw\u0105 refleksji,\n\nma formalny opis matematyczny, umo\u017C\
+    liwiaj\u0105cy analiz\u0119 i optymalizacj\u0119,\n\nje"
+- id: universal_rae_paper_0_6
+  metadata:
+    id: universal_rae_paper_0_6
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "st wdra\u017Calny w praktyce \u2013 od pojedynczego laptopa po klaster w\
+    \ du\u017Cej organizacji,\n\nrespektuje wymagania governance (m.in. ISO 42001,\
+    \ RODO, audytowalno\u015B\u0107).\n\n2. Problem i motywacja\n2.1. Ograniczenia\
+    \ klasycznych podej\u015B\u0107\n\nTypowe podej\u015Bcia do \u201Epami\u0119ci\u201D\
+    \ agent\xF3w LLM mo\u017Cna stre\u015Bci\u0107 w kilku punktach:\n\nprosty log\
+    \ konwersacji trzymany w oknie kontekstu;\n\nprosta pami\u0119\u0107 oparta na\
+    \ wektorowym indeksie (embeddingi + wyszukiwanie podobnych fragment\xF3w),\n\n\
+    ad-hoc notatki lub \u201Edzienniki\u201D generowane przez model, bez "
+- id: universal_rae_paper_0_7
+  metadata:
+    id: universal_rae_paper_0_7
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "jasnej struktury i cyklu \u017Cycia.\n\nTakie rozwi\u0105zania maj\u0105\
+    \ kilka powa\u017Cnych wad:\n\nbrak klarownego modelu warstw pami\u0119ci (wszystko\
+    \ jest \u201Ewrzucone\u201D do jednego worka),\n\nbrak mo\u017Cliwo\u015Bci kontroli\
+    \ d\u0142ugoterminowego rozwoju wiedzy (co awansuje do \u201Etwardych fakt\xF3\
+    w\u201D?),\n\ntrudno\u015Bci z audytowaniem i governance (trudno odpowiedzie\u0107\
+    \ na pytanie: \u201ENa jakiej podstawie agent podj\u0105\u0142 t\u0119 decyzj\u0119\
+    ?\u201D),\n\nbrak formalnego opisu matematycznego, kt\xF3ry pozwala\u0142by analizowa\u0107\
+    \ polityk\u0119 pami\u0119ci (np. jak dobierany jest kontekst, jakie"
+- id: universal_rae_paper_0_8
+  metadata:
+    id: universal_rae_paper_0_8
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: " s\u0105 koszty).\n\n2.2. Cele projektowe RAE\n\nProjektuj\u0105c RAE, przyj\u0105\
+    \u0142em kilka jasnych cel\xF3w:\n\nPami\u0119\u0107 jak u cz\u0142owieka \u2013\
+    \ rozdzielenie pami\u0119ci epizodycznej, roboczej, semantycznej i refleksyjnej,\
+    \ z jasnymi zasadami tego, co gdzie trafia.\n\nRefleksja jako cz\u0119\u015B\u0107\
+    \ pami\u0119ci \u2013 nie jako trik promptowy, ale jako w pe\u0142ni obs\u0142\
+    ugiwany proces z w\u0142asn\u0105 warstw\u0105 pami\u0119ci.\n\nMatematyka jako\
+    \ spoiwo \u2013 od MDP po w\u0105skie gard\u0142o informacyjne i operator grafu,\
+    \ tak aby mo\u017Cna by\u0142o:\n\nanalizowa\u0107 zachowanie pami\u0119ci,\n\n\
+    w przysz\u0142o\u015Bci ucz"
+- id: universal_rae_paper_0_9
+  metadata:
+    id: universal_rae_paper_0_9
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "y\u0107 polityki pami\u0119ci (np. RL),\n\nstosowa\u0107 ten sam silnik w\
+    \ r\xF3\u017Cnych domenach (IT, przemys\u0142, administracja).\n\nLocal-first\
+    \ i vendor-agnostic \u2013 mo\u017Cliwo\u015B\u0107 pracy w pe\u0142ni lokalnie\
+    \ (np. z Ollama) oraz w chmurze, z szacunkiem do danych i koszt\xF3w.\n\nGotowo\u015B\
+    \u0107 produkcyjna \u2013 wdro\u017Cenia od ma\u0142ego zespo\u0142u po du\u017C\
+    e przedsi\u0119biorstwo; multi-tenant, ISO 42001, OpenTelemetry, audytowalno\u015B\
+    \u0107.\n\n3. Architektura systemu RAE\n3.1. Og\xF3lny obraz\n\nRAE jest napisany\
+    \ w Pythonie i wystawia REST API (FastAPI) oraz Python SDK. W upros"
+- id: universal_rae_paper_0_10
+  metadata:
+    id: universal_rae_paper_0_10
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "zczeniu, architektura sk\u0142ada si\u0119 z:\n\nMemory API \u2013 centralna\
+    \ us\u0142uga obs\u0142uguj\u0105ca:\n\nrejestrowanie epizod\xF3w (wej\u015Bcia/wyj\u015B\
+    cia agenta, wywo\u0142ania narz\u0119dzi),\n\nzapytania o kontekst,\n\nuruchamianie\
+    \ refleksji,\n\nzarz\u0105dzanie tenantami, projektami i bud\u017Cetami.\n\nWarstwa\
+    \ przechowywania:\n\nrelacyjna baza danych (np. PostgreSQL) dla epizod\xF3w, fakt\xF3\
+    w, refleksji, koszt\xF3w i metadanych,\n\nwektorowy indeks (np. pgvector/Qdrant)\
+    \ do wyszukiwania semantycznego,\n\npami\u0119\u0107 podr\u0119czna (Redis) do\
+    \ buforowania.\n\nGraphRAG \u2013 mechanizm"
+- id: universal_rae_paper_0_11
+  metadata:
+    id: universal_rae_paper_0_11
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: " budowania i aktualizacji grafu wiedzy oraz hybrydowego wyszukiwania (wektor\
+    \ + graf).\n\nSilnik refleksji \u2013 logika Actor\u2013Evaluator\u2013Reflector,\
+    \ powi\u0105zana z warstw\u0105 pami\u0119ci refleksyjnej.\n\nWarstwa matematyczna\
+    \ \u2013 implementacja MDP, scoringu IB, operatora grafowego i funkcji nagrody.\n\
+    \nGovernance i telemetry \u2013 OpenTelemetry, metryki, mechanizmy RLS (Row-Level\
+    \ Security), regu\u0142y governance.\n\nAdapter LLM \u2013 jednolite API do r\xF3\
+    \u017Cnych modeli: lokalnych (np. Ollama) i chmurowych (OpenAI, Anthropic, Gemini).\n\
+    \n3.2"
+- id: universal_rae_paper_0_12
+  metadata:
+    id: universal_rae_paper_0_12
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: ". Integracja z agentami\n\nRAE nie jest frameworkiem agent\xF3w; jest silnikiem\
+    \ pami\u0119ci, kt\xF3ry mo\u017Cna podpi\u0105\u0107 do:\n\npojedynczych agent\xF3\
+    w (np. programistycznych, badawczych),\n\norkiestrator\xF3w multi-agentowych,\n\
+    \nistniej\u0105cych system\xF3w (MES, CRM, narz\u0119dzia R&D, systemy workflow).\n\
+    \nAgent komunikuje si\u0119 z RAE przez API, np.:\n\nzapisuje epizody (wej\u015B\
+    cia/wyj\u015Bcia, wyniki akcji),\n\npyta o kontekst (pobranie working memory dla\
+    \ danego kroku),\n\nzleca refleksj\u0119 po sekwencji krok\xF3w.\n\n4. Czterowarstwowa\
+    \ pami\u0119\u0107 refleksyjn"
+- id: universal_rae_paper_0_13
+  metadata:
+    id: universal_rae_paper_0_13
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "a\n\nCentraln\u0105 koncepcj\u0105 RAE jest czterowarstwowa pami\u0119\u0107\
+    , inspirowana psychologi\u0105 poznawcz\u0105, ale zaprojektowana pragmatycznie\
+    \ pod potrzeby agent\xF3w LLM.\n\n4.1. Pami\u0119\u0107 epizodyczna\n\nPami\u0119\
+    \u0107 epizodyczna przechowuje surowe epizody:\n\nwypowiedzi u\u017Cytkownika,\n\
+    \nodpowiedzi agenta,\n\nwywo\u0142ania narz\u0119dzi i ich wyniki,\n\nmetadane\
+    \ (czas, tenant, projekt, koszty).\n\nKa\u017Cdy epizod jest atompowym \u201E\
+    kawa\u0142kiem do\u015Bwiadczenia\u201D. Pami\u0119\u0107 epizodyczna jest podstaw\u0105\
+    \ do:\n\np\xF3\u017Aniejszego budowania fakt\xF3w semantycznych,\n\ngenerowania\
+    \ ref"
+- id: universal_rae_paper_0_14
+  metadata:
+    id: universal_rae_paper_0_14
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "leksji,\n\naudytu (\u015Bledzenie, sk\u0105d wzi\u0105\u0142 si\u0119 dany\
+    \ wniosek).\n\n4.2. Pami\u0119\u0107 robocza\n\nPami\u0119\u0107 robocza (working\
+    \ memory) to zestaw element\xF3w, kt\xF3re trafiaj\u0105 do kontekstu LLM w danym\
+    \ kroku. Jest to wynik procesu:\n\nwyszukiwania wektorowego,\n\nprzej\u015Bcia\
+    \ po grafie wiedzy,\n\nfiltracji i rankingowania (m.in. similarity, recency, trust).\n\
+    \nTo, co znajdzie si\u0119 w pami\u0119ci roboczej, decyduje:\n\njak dobrze agent\
+    \ pami\u0119ta przesz\u0142o\u015B\u0107,\n\nczy potrafi kontynuowa\u0107 z\u0142\
+    o\u017Cony w\u0105tek,\n\nile kosztuje pojedynczy krok (liczba token\xF3w).\n\n"
+- id: universal_rae_paper_0_15
+  metadata:
+    id: universal_rae_paper_0_15
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "Dob\xF3r pami\u0119ci roboczej ma w RAE formalne uj\u0119cie matematyczne\
+    \ (w\u0105skie gard\u0142o informacyjne \u2013 patrz sekcja 5.2).\n\n4.3. Pami\u0119\
+    \u0107 semantyczna i graf wiedzy\n\nPami\u0119\u0107 semantyczna przechowuje ustabilizowane\
+    \ fakty i relacje, powsta\u0142e z epizod\xF3w oraz refleksji:\n\n\u201EFunkcja\
+    \ X w module Y obs\u0142uguje walidacj\u0119 Z\u201D,\n\n\u201ETen klient to JST\
+    \ pracuj\u0105ca w re\u017Cimie prawnym R\u201D,\n\n\u201ETen plik konfiguracyjny\
+    \ w projekcie odpowiada za \u2026\u201D.\n\nReprezentowana jest m.in. jako graf\
+    \ wiedzy:\n\nw\u0119z\u0142y: byty (funkcje, pliki, klienci, procesy, idee"
+- id: universal_rae_paper_0_16
+  metadata:
+    id: universal_rae_paper_0_16
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "),\n\nkraw\u0119dzie: relacje (u\u017Cywa, nale\u017Cy do, referuje, wynika\
+    \ z).\n\nGraphRAG pozwala:\n\nrozszerza\u0107 kontekst o powi\u0105zane elementy\
+    \ (np. s\u0105siednie w\u0119z\u0142y, \u015Bcie\u017Cki w grafie),\n\nbudowa\u0107\
+    \ bardziej \u201E\u015Bwiadomy\u201D kontekst ni\u017C sama lista podobnych tekst\xF3\
+    w z wektor\xF3w.\n\n4.4. Pami\u0119\u0107 refleksyjna\n\nOstatnia warstwa to pami\u0119\
+    \u0107 refleksyjna \u2013 wynik dzia\u0142ania silnika refleksji. Zawiera:\n\n\
+    uog\xF3lnienia (\u201EW tym projekcie zawsze najpierw walidujemy X przed Y\u201D\
+    ),\n\nlekcje i antywzorce (\u201ETen spos\xF3b integracji z API okaza\u0142 si\u0119\
+    \ zawodny\u201D"
+- id: universal_rae_paper_0_17
+  metadata:
+    id: universal_rae_paper_0_17
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "),\n\ndecyzje projektowe (\u201EUzgodniono, \u017Ce u\u017Cywamy podej\u015B\
+    cia Z do logowania\u201D).\n\nKluczowe jest to, \u017Ce:\n\nrefleksja jest procesem\
+    \ pierwszej klasy (ma swoje API, metryki, koszty),\n\npami\u0119\u0107 refleksyjna\
+    \ jest osobn\u0105 warstw\u0105, a nie tylko tagiem na epizodach,\n\nto w\u0142\
+    a\u015Bnie ta warstwa decyduje o \u201Echarakterze\u201D agenta: co uwa\u017C\
+    a za wa\u017Cne, jak interpretuje do\u015Bwiadczenie.\n\nWarstwa refleksyjna odr\xF3\
+    \u017Cnia RAE od rozwi\u0105za\u0144, kt\xF3re zatrzymuj\u0105 si\u0119 na \u201E\
+    epizody + graf\u201D, traktuj\u0105c refleksj\u0119 jako trik promptowy.\n\n5.\
+    \ Wielowarstw"
+- id: universal_rae_paper_0_18
+  metadata:
+    id: universal_rae_paper_0_18
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "owa warstwa matematyczna\n\nW RAE warstwa matematyczna jest r\xF3wnie\u017C\
+    \ wielowarstwowa, tak aby:\n\nopisa\u0107 dynamik\u0119 pami\u0119ci,\n\nuj\u0105\
+    \u0107 dob\xF3r kontekstu jako problem informacyjny,\n\nuchwyci\u0107 ewolucj\u0119\
+    \ grafu,\n\nzintegrowa\u0107 jako\u015B\u0107, koszt i governance.\n\nWyr\xF3\u017C\
+    niam cztery poziomy (M0\u2013M3).\n\n5.1. M0 \u2013 pami\u0119\u0107 jako proces\
+    \ decyzyjny Markowa (MDP)\n\nNa najni\u017Cszym poziomie RAE modeluje silnik pami\u0119\
+    ci jako proces decyzyjny Markowa:\n\n\U0001D440\n=\n(\n\U0001D446\n,\n\U0001D434\
+    \n,\n\U0001D447\n,\n\U0001D445\n,\n\U0001D6FE\n)\nM=(S,A,T,R,\u03B3)\n\nStan \n\
+    \U0001D446\nS \u2013 pe\u0142ny stan pami\u0119ci:\nepizodyczna, robocza,"
+- id: universal_rae_paper_0_19
+  metadata:
+    id: universal_rae_paper_0_19
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: " semantyczna, refleksyjna, graf wiedzy, bud\u017Cety, flagi governance.\n\
+    \nAkcje \n\U0001D434\nA \u2013 sko\u0144czony zbi\xF3r operacji na pami\u0119\
+    ci, m.in.:\n\nretrieve (pobranie kandydat\xF3w do pami\u0119ci roboczej),\n\n\
+    store_episode (zapis epizodu),\n\nupdate_graph (aktualizacja grafu),\n\nreflect\
+    \ (wykonanie cyklu refleksji),\n\nprune / decay (przycinanie, wygaszanie),\n\n\
+    promote_to_reflective (awans informacji do pami\u0119ci refleksyjnej).\n\nPrzej\u015B\
+    cia \n\U0001D447\nT \u2013 deterministyczny (na poziomie implementacji) efekt\
+    \ aplikacji akcji do stanu.\n\nNagroda \n\U0001D445\n"
+- id: universal_rae_paper_0_20
+  metadata:
+    id: universal_rae_paper_0_20
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "R \u2013 funkcja jako\u015Bci i kosztu (patrz M3).\n\nWsp\xF3\u0142czynnik\
+    \ \n\U0001D6FE\n\u03B3 \u2013 uwzgl\u0119dnia odleg\u0142e konsekwencje.\n\nTaki\
+    \ opis:\n\npozwala my\u015Ble\u0107 o zarz\u0105dzaniu pami\u0119ci\u0105 tak,\
+    \ jak o sterowaniu systemem,\n\notwiera drog\u0119 do uczenia polityki pami\u0119\
+    ci (np. RL),\n\nporz\u0105dkuje implementacj\u0119 \u2013 ka\u017Cda wa\u017C\
+    na operacja pami\u0119ci jest jawnie akcj\u0105 w MDP.\n\n5.2. M1 \u2013 dob\xF3\
+    r kontekstu jako w\u0105skie gard\u0142o informacyjne\n\nDob\xF3r pami\u0119ci\
+    \ roboczej jest kluczowy: agent nie mo\u017Ce dosta\u0107 wszystkiego, co wiemy,\
+    \ tylko to, co najbardziej przydatne i mieszcz"
+- id: universal_rae_paper_0_21
+  metadata:
+    id: universal_rae_paper_0_21
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "\u0105ce si\u0119 w bud\u017Cecie.\n\nW RAE ujmuj\u0119 to jako problem information\
+    \ bottleneck:\n\nmin\n\u2061\n\U0001D45D\n(\n\U0001D467\n\u2223\n\U0001D465\n\
+    )\n\U0001D43C\n(\n\U0001D44D\n;\n\U0001D44B\n)\n\u2212\n\U0001D6FD\n\u2009\n\U0001D43C\
+    \n(\n\U0001D44D\n;\n\U0001D44C\n)\n,\np(z\u2223x)\nmin\n\t\u200B\n\nI(Z;X)\u2212\
+    \u03B2I(Z;Y),\n\ngdzie:\n\n\U0001D44B\nX \u2013 pe\u0142en zbi\xF3r kandydat\xF3\
+    w (epizody, fakty, refleksje),\n\n\U0001D44D\nZ \u2013 wybrana pami\u0119\u0107\
+    \ robocza,\n\n\U0001D44C\nY \u2013 zadanie / cel (np. poprawna odpowied\u017A\
+    , jako\u015B\u0107 planu),\n\n\U0001D6FD\n\u03B2 \u2013 wsp\xF3\u0142czynnik \u201E\
+    wa\u017Cno\u015Bci\u201D informacji wzgl\u0119dem kompresji.\n\nW implementacji\
+    \ nie licz\u0119 tej funkcji analitycznie; wykorzystuj\u0119 j\u0105 jako ram\u0119\
+    \ do projektowania heurystyk, kt\xF3re \u0142\u0105cz\u0105:\n\npo"
+- id: universal_rae_paper_0_22
+  metadata:
+    id: universal_rae_paper_0_22
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "dobie\u0144stwo semantyczne (embeddingi),\n\nodleg\u0142o\u015B\u0107 i znaczenie\
+    \ w grafie (centralno\u015B\u0107, \u015Bcie\u017Cki),\n\nczas (funkcja wygaszania\
+    \ w zale\u017Cno\u015Bci od wieku epizodu),\n\nwiarygodno\u015B\u0107 (np. brak\
+    \ sprzeczno\u015Bci, sygna\u0142y jako\u015Bci),\n\nkoszt (limit token\xF3w, bud\u017C\
+    ety).\n\nTo, \u017Ce jest za tym formalny model IB, pozwala:\n\nanalizowa\u0107\
+    \ i por\xF3wnywa\u0107 r\xF3\u017Cne heurystyki,\n\nw przysz\u0142o\u015Bci zbli\u017C\
+    a\u0107 si\u0119 do rozwi\u0105za\u0144 uczonych (np. uczy\u0107 parametry scoringu\
+    \ na danych).\n\n5.3. M2 \u2013 operator grafowy na pami\u0119ci semantycznej\n\
+    \nPami\u0119\u0107 semantyczna i refl"
+- id: universal_rae_paper_0_23
+  metadata:
+    id: universal_rae_paper_0_23
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "eksyjna tworz\u0105 graf wiedzy \n\U0001D43A\n\U0001D461\nG\nt\n\t\u200B\n\
+    \n. Jego ewolucja w czasie jest opisana operatorem:\n\n\U0001D43A\n\U0001D461\n\
+    +\n1\n=\n\U0001D447\n(\n\U0001D43A\n\U0001D461\n,\n\U0001D45C\n\U0001D461\n,\n\
+    \U0001D44E\n\U0001D461\n)\n,\nG\nt+1\n\t\u200B\n\n=T(G\nt\n\t\u200B\n\n,o\nt\n\
+    \t\u200B\n\n,a\nt\n\t\u200B\n\n),\n\ngdzie:\n\n\U0001D43A\n\U0001D461\nG\nt\n\t\
+    \u200B\n\n \u2013 graf w chwili \n\U0001D461\nt,\n\n\U0001D45C\n\U0001D461\no\n\
+    t\n\t\u200B\n\n \u2013 nowe obserwacje (epizody, refleksje, zewn\u0119trzne sygna\u0142\
+    y),\n\n\U0001D44E\n\U0001D461\na\nt\n\t\u200B\n\n \u2013 akcje pami\u0119ci (np.\
+    \ update_graph, decay, merge_entities).\n\nW RAE operator ten obejmuje m.in.:\n\
+    \nwygaszanie wag kraw\u0119dzi w czasie (starsze informacje s\u0105 mniej wp\u0142\
+    ywowe),\n\nscalanie byt\xF3w (entity resoluti"
+- id: universal_rae_paper_0_24
+  metadata:
+    id: universal_rae_paper_0_24
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "on \u2013 \u0142\u0105czenie duplikat\xF3w),\n\nmechanizmy monitorowania\
+    \ stabilno\u015Bci grafu (np. czy nie rozrasta si\u0119 w spos\xF3b niekontrolowany).\n\
+    \nGrafowy punkt widzenia:\n\numo\u017Cliwia powi\u0105zanie wielu epizod\xF3w\
+    \ i refleksji w sp\xF3jn\u0105 struktur\u0119,\n\nstanowi podstaw\u0119 hybrydowego\
+    \ GraphRAG,\n\nu\u0142atwia analiz\u0119 (np. wizualizacj\u0119 podsieci wiedzy\
+    \ dotycz\u0105cej jednego klienta/projektu).\n\n5.4. M3 \u2013 nagroda, koszt\
+    \ i governance\n\nOstatnia warstwa w math to funkcja nagrody integruj\u0105ca:\n\
+    \njako\u015B\u0107 (quality),\n\nkoszt (cost),\n\nwymagania governance.\n"
+- id: universal_rae_paper_0_25
+  metadata:
+    id: universal_rae_paper_0_25
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "\nW najprostszym uj\u0119ciu:\n\n\U0001D445\n(\n\U0001D460\n\U0001D461\n\
+    ,\n\U0001D44E\n\U0001D461\n,\n\U0001D460\n\U0001D461\n+\n1\n)\n=\n\U0001D464\n\
+    \U0001D45E\n\u22C5\nQuality\n(\n\U0001D44E\n\U0001D461\n)\n\u2212\n\U0001D464\n\
+    \U0001D450\n\u22C5\nCost\n(\n\U0001D44E\n\U0001D461\n)\n,\nR(s\nt\n\t\u200B\n\n\
+    ,a\nt\n\t\u200B\n\n,s\nt+1\n\t\u200B\n\n)=w\nq\n\t\u200B\n\n\u22C5Quality(a\n\
+    t\n\t\u200B\n\n)\u2212w\nc\n\t\u200B\n\n\u22C5Cost(a\nt\n\t\u200B\n\n),\n\ngdzie:\n\
+    \nQuality\n(\n\U0001D44E\n\U0001D461\n)\nQuality(a\nt\n\t\u200B\n\n) \u2013 jako\u015B\
+    \u0107 dzia\u0142ania (trafno\u015B\u0107 kontekstu, przydatno\u015B\u0107 refleksji,\
+    \ poprawa wyniku),\n\nCost\n(\n\U0001D44E\n\U0001D461\n)\nCost(a\nt\n\t\u200B\n\
+    \n) \u2013 koszt w tokenach, czasie, zasobach,\n\n\U0001D464\n\U0001D45E\n,\n\U0001D464\
+    \n\U0001D450\nw\nq\n\t\u200B\n\n,w\nc\n\t\u200B\n\n \u2013 wagi dopasowane do\
+    \ kontekstu (np. inny profil dla nauki, inny dla produkcji).\n\nNa t\u0119 warstw\u0119\
+    \ \u201Enas"
+- id: universal_rae_paper_0_26
+  metadata:
+    id: universal_rae_paper_0_26
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "adzam\u201D:\n\nmetryki OpenTelemetry (latencje, b\u0142\u0119dy, rozmiary\
+    \ kontekstu, cz\u0119stotliwo\u015B\u0107 refleksji, koszty),\n\npowi\u0105zanie\
+    \ z ryzykami i politykami (np. limity na wydatki per tenant, zasady dost\u0119\
+    pu do danych).\n\nTo sprawia, \u017Ce matematyczne j\u0105dro jest u\u017Cyteczne\
+    \ zar\xF3wno:\n\nw badaniach (analiza polityki pami\u0119ci),\n\njak i w produkcji\
+    \ (pilnowanie koszt\xF3w, audyt, compliance).\n\n5.5. Zastosowanie wielowarstwowej\
+    \ matematyki w r\xF3\u017Cnych dziedzinach\n\nDzi\u0119ki temu, \u017Ce:\n\nwarstwa\
+    \ M0\u2013M3 jest oderwana od konkretnej domeny,\n\np"
+- id: universal_rae_paper_0_27
+  metadata:
+    id: universal_rae_paper_0_27
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "ami\u0119\u0107 operuje na abstrakcyjnych epizodach, faktach i refleksjach,\n\
+    \nRAE mo\u017Ce by\u0107 u\u017Cyty w wielu obszarach:\n\nIn\u017Cynieria oprogramowania\
+    \ \u2013 agent pami\u0119ta decyzje architektoniczne, wzorce, bugi i ich naprawy;\
+    \ refleksja wy\u0142apuje antywzorce i dobre praktyki.\n\nPrzemys\u0142 / MES\
+    \ \u2013 agent pami\u0119ta sekwencje zdarze\u0144 produkcyjnych, przyczyny przestoj\xF3\
+    w; na warstwie refleksyjnej powstaj\u0105 regu\u0142y optymalizacji i ostrze\u017C\
+    enia.\n\nR&D / nauka \u2013 pami\u0119\u0107 przechowuje hipotezy, wyniki eksperyment\xF3\
+    w, wnioski z literatury; refle"
+- id: universal_rae_paper_0_28
+  metadata:
+    id: universal_rae_paper_0_28
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "ksja pomaga budowa\u0107 \u201Edziennik badawczy 2.0\u201D.\n\nAdministracja\
+    \ / JST \u2013 agent pami\u0119ta schematy odpowiedzi, wzorce pism, rozstrzygni\u0119\
+    cia spraw; refleksja pozwala ulepsza\u0107 procedury i ujednolica\u0107 standard.\n\
+    \nTa sama matematyka opisuje mechanik\u0119 pami\u0119ci niezale\u017Cnie od dziedziny\
+    \ \u2013 zmienia si\u0119 jedynie semantyka epizod\xF3w i fakt\xF3w.\n\n6. Mechanizm\
+    \ refleksji i obs\u0142uga wielu modeli LLM\n6.1. Wzorzec Actor\u2013Evaluator\u2013\
+    Reflector\n\nSilnik refleksji w RAE jest oparty na tr\xF3jce:\n\nActor \u2013\
+    \ w\u0142a\u015Bciwy agent, kt\xF3ry wykonuje z"
+- id: universal_rae_paper_0_29
+  metadata:
+    id: universal_rae_paper_0_29
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "adanie, korzystaj\u0105c z pami\u0119ci RAE,\n\nEvaluator \u2013 komponent\
+    \ oceniaj\u0105cy jako\u015B\u0107 rezultatu (np. sukces/porazka, jako\u015B\u0107\
+    \ kodu, satysfakcja u\u017Cytkownika, metryki biznesowe),\n\nReflector \u2013\
+    \ proces (oparty na LLM), kt\xF3ry generuje refleksj\u0119: podsumowanie do\u015B\
+    wiadczenia, wnioski, zasady.\n\nTypowy cykl wygl\u0105da tak:\n\nActor wykonuje\
+    \ seri\u0119 krok\xF3w, zapisuj\u0105c epizody w RAE.\n\nEvaluator ocenia wynik\
+    \ (automatycznie lub na podstawie feedbacku u\u017Cytkownika).\n\nAgent wywo\u0142\
+    uje API RAE typu POST /reflect z identyfikatorami epiz"
+- id: universal_rae_paper_0_30
+  metadata:
+    id: universal_rae_paper_0_30
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "od\xF3w i ocen\u0105.\n\nReflector \u2013 korzystaj\u0105c z wybranego modelu\
+    \ LLM \u2013 generuje refleksj\u0119, kt\xF3ra trafia do warstwy refleksyjnej\
+    \ i aktualizuje graf wiedzy.\n\nRefleksja:\n\nmo\u017Ce by\u0107 drobna (lokalna,\
+    \ dotycz\u0105ca jednego b\u0142\u0119du),\n\nalbo g\u0142\u0119boka (podsumowanie\
+    \ wi\u0119kszego projektu, d\u0142ugiej serii iteracji).\n\n6.2. Multi-LLM reflection\n\
+    \nRAE zak\u0142ada wielomodelowo\u015B\u0107 na poziomie refleksji:\n\nr\xF3\u017C\
+    ne modele do r\xF3\u017Cnych r\xF3l:\n\nma\u0142y model lokalny \u2013 do tanich,\
+    \ cz\u0119stych mikrorefleksji,\n\nwi\u0119kszy model chmurowy \u2013 do rzadkich,\
+    \ g\u0142\u0119bokic"
+- id: universal_rae_paper_0_31
+  metadata:
+    id: universal_rae_paper_0_31
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "h refleksji (np. przegl\u0105d miesi\u0105ca pracy).\n\nredundancja:\n\n\
+    te same epizody mog\u0105 zosta\u0107 zreflektowane przez dwa modele; r\xF3\u017C\
+    nice w wnioskach mo\u017Cna analizowa\u0107,\n\nw przysz\u0142o\u015Bci mo\u017C\
+    na u\u017Cywa\u0107 meta-refleksji do wykrywania rozbie\u017Cno\u015Bci.\n\npolityka\
+    \ kosztowa:\n\nw warstwie nagrody i governance uwzgl\u0119dniany jest koszt wywo\u0142\
+    a\u0144 poszczeg\xF3lnych modeli,\n\nmo\u017Cna ustala\u0107 progi (np. \u201E\
+    deep reflection nie cz\u0119\u015Bciej ni\u017C raz na N krok\xF3w / raz dziennie\u201D\
+    ).\n\nWszystko to jest osadzone w tej samej architekturze pami\u0119ci \u2013\
+    \ niezale\u017C"
+- id: universal_rae_paper_0_32
+  metadata:
+    id: universal_rae_paper_0_32
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "nie od tego, czy refleksj\u0119 generuje model lokalny, czy chmurowy.\n\n\
+    7. Warstwa techniczna i wdro\u017Ceniowa\n7.1. Local-first \u2013 profil \u201E\
+    RAE Lite\u201D\n\nRAE Lite to profil, kt\xF3ry mo\u017Cna uruchomi\u0107 na:\n\
+    \nlaptopie dewelopera,\n\nniedu\u017Cym serwerze on-premise,\n\nma\u0142ym VPS.\n\
+    \nSk\u0142ada si\u0119 z minimalnego zestawu us\u0142ug:\n\ncore Memory API,\n\
+    \nbaza danych,\n\nwektorowy indeks,\n\nRedis (cache / kolejki).\n\nMo\u017Ce dzia\u0142\
+    a\u0107:\n\nz lokalnym modelem (np. przez Ollama),\n\nz zewn\u0119trznymi API\
+    \ (je\u015Bli polityka bezpiecze\u0144stwa na to pozwala).\n\nTo profi"
+- id: universal_rae_paper_0_33
+  metadata:
+    id: universal_rae_paper_0_33
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "l idealny do:\n\nindywidualnej pracy (independent researcher, pojedynczy\
+    \ zesp\xF3\u0142),\n\nprototyp\xF3w,\n\ninstalacji o wysokich wymaganiach dotycz\u0105\
+    cych prywatno\u015Bci (dane nie opuszczaj\u0105 organizacji).\n\n7.2. Profil standardowy\n\
+    \nW profilu standardowym dochodz\u0105:\n\nus\u0142ugi odpowiedzialne za embeddingi,\
+    \ reranking,\n\ndashboard / panel do podgl\u0105du metryk i stanu pami\u0119ci,\n\
+    \nzadania w tle (np. okresowe \u201Emarzenia\u201D \u2013 automatyczne refleksje,\
+    \ cleanup, decay).\n\nTen profil jest przeznaczony dla:\n\nzespo\u0142\xF3w (kilkana\u015B\
+    cie\u2013kilkadzie"
+- id: universal_rae_paper_0_34
+  metadata:
+    id: universal_rae_paper_0_34
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "si\u0105t os\xF3b),\n\n\u015Brodowisk testowych i przedprodukcyjnych,\n\n\
+    wdro\u017Ce\u0144 wewn\u0119trznych (np. w dziale R&D, IT).\n\n7.3. Wdro\u017C\
+    enie klastrowe (Kubernetes)\n\nDla wi\u0119kszych organizacji przewidziany jest\
+    \ profil:\n\noparty na Kubernetesie,\n\nz mo\u017Cliwo\u015Bci\u0105 skalowania\
+    \ poziomego (wi\u0119cej replik API),\n\nz pod\u0142\u0105czonym monitoringiem\
+    \ (Prometheus, Grafana),\n\nz osobnymi bazami danych / przestrzeni\u0105 dla tenant\xF3\
+    w.\n\nTakie wdro\u017Cenie:\n\npozwala obs\u0142ugiwa\u0107 wielu u\u017Cytkownik\xF3\
+    w i projekt\xF3w jednocze\u015Bnie,\n\nobs\u0142uguje HA (wysoka dost\u0119pno\u015B\
+    \u0107),\n"
+- id: universal_rae_paper_0_35
+  metadata:
+    id: universal_rae_paper_0_35
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "\nintegruje si\u0119 z istniej\u0105cymi standardami bezpiecze\u0144stwa\
+    \ i logowania organizacji.\n\n8. Governance, bezpiecze\u0144stwo i zgodno\u015B\
+    \u0107\n\nOd pocz\u0105tku RAE by\u0142 projektowany tak, aby:\n\nda\u0142o si\u0119\
+    \ go wykorzysta\u0107 w \u015Brodowiskach o wysokich wymaganiach regulacyjnych\
+    \ (administracja, sektor publiczny, przemys\u0142),\n\numo\u017Cliwia\u0142 audyt\
+    \ i certyfikacj\u0119.\n\n8.1. ISO/IEC 42001 i zarz\u0105dzanie ryzykiem\n\nRAE\
+    \ integruje:\n\nrejestr ryzyk zwi\u0105zanych z u\u017Cywaniem agent\xF3w LLM,\n\
+    \npowi\u0105zane polityki (np. limity na dane wej\u015Bciowe, zasady anonimiz"
+- id: universal_rae_paper_0_36
+  metadata:
+    id: universal_rae_paper_0_36
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "acji),\n\nmechanizmy monitorowania i alarmowania.\n\nArchitektura i metryki\
+    \ s\u0105 zaprojektowane tak, aby u\u0142atwia\u0107 integracj\u0119 z systemem\
+    \ AIMS (AI Management System) zgodnym z ISO/IEC 42001.\n\n8.2. Wielodzier\u017C\
+    awczo\u015B\u0107 i separacja danych\n\nDane s\u0105 rozdzielone per:\n\ntenant\
+    \ (organizacja / klient),\n\nprojekt,\n\nczas \u017Cycia (polityki retencji).\n\
+    \nSeparacja jest dodatkowo wspierana przez:\n\nmechanizmy typu Row-Level Security,\n\
+    \nregu\u0142y autoryzacji na poziomie API,\n\nlogi audytowe (kto, kiedy, do czego\
+    \ mia\u0142 dost\u0119p).\n\n8.3"
+- id: universal_rae_paper_0_37
+  metadata:
+    id: universal_rae_paper_0_37
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: ". Telemetria i audyt\n\nDzi\u0119ki OpenTelemetry i Prometheusowi RAE rejestruje:\n\
+    \nmetryki techniczne (latencje, b\u0142\u0119dy, obci\u0105\u017Cenie),\n\nmetryki\
+    \ \u201Epoznawcze\u201D (rozmiary kontekstu, cz\u0119stotliwo\u015B\u0107 refleksji,\
+    \ zu\u017Cycie bud\u017Cet\xF3w),\n\nmetryki powi\u0105zane z governance (przekroczenia\
+    \ limit\xF3w, zdarzenia ryzyka).\n\nTo pozwala:\n\nanalizowa\u0107 zachowanie\
+    \ systemu z perspektywy in\u017Cynierskiej i badawczej,\n\nprzygotowa\u0107 si\u0119\
+    \ do audyt\xF3w (np. w kontek\u015Bcie RODO, ISO 42001),\n\nargumentowa\u0107\
+    , \u017Ce system ma kontrolowan\u0105 i mierzaln\u0105 warstw\u0119 pam"
+- id: universal_rae_paper_0_38
+  metadata:
+    id: universal_rae_paper_0_38
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "i\u0119ci oraz koszt\xF3w.\n\n9. Przyk\u0142adowe scenariusze zastosowa\u0144\
+    \n9.1. Planowanie bada\u0144 i projekt\xF3w R&D\n\nAgent wspieraj\u0105cy dzia\u0142\
+    \ R&D:\n\npami\u0119ta histori\u0119 projekt\xF3w, hipotez, eksperyment\xF3w,\
+    \ wniosk\xF3w,\n\ngeneruje podsumowania cykli badawczych,\n\nreflektuje nad tym,\
+    \ kt\xF3re strategie eksperymentalne si\u0119 sprawdzi\u0142y, a kt\xF3re nie,\n\
+    \npomaga projektowa\u0107 nowe projekty, korzystaj\u0105c z refleksji i fakt\xF3\
+    w.\n\nRAE zapewnia tu:\n\ntrwa\u0142\u0105 pami\u0119\u0107 badawcz\u0105,\n\n\
+    warstw\u0119 refleksji (co dzia\u0142a, co nie),\n\naudytowalno\u015B\u0107 (istotne\
+    \ w ocenie dor"
+- id: universal_rae_paper_0_39
+  metadata:
+    id: universal_rae_paper_0_39
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "obku i projekt\xF3w).\n\n9.2. AI Factory / MES i produkcja\n\nW \u015Brodowisku\
+    \ przemys\u0142owym:\n\nepizody to zdarzenia na liniach produkcyjnych, alarmy,\
+    \ zmiany nastaw, raporty operator\xF3w,\n\npami\u0119\u0107 semantyczna i graf\
+    \ odwzorowuj\u0105 procesy, zale\u017Cno\u015Bci mi\u0119dzy maszynami, typowe\
+    \ stany awaryjne,\n\nrefleksja wyci\u0105ga wnioski: np. \u201Eta kombinacja parametr\xF3\
+    w cz\u0119sto prowadzi do przestoj\xF3w\u201D.\n\nRAE mo\u017Ce tu s\u0142u\u017C\
+    y\u0107 jako:\n\nsilnik pami\u0119ci dla agent\xF3w monitoruj\u0105cych produkcj\u0119\
+    ,\n\npodstawa do raport\xF3w i rekomendacji dla in\u017Cynier\xF3w,\n\n\u017A\
+    r\xF3"
+- id: universal_rae_paper_0_40
+  metadata:
+    id: universal_rae_paper_0_40
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "d\u0142o ustrukturyzowanej wiedzy historycznej.\n\n9.3. Administracja publiczna\
+    \ i JST\n\nW administracji:\n\nepizody odzwierciedlaj\u0105 wnioski, decyzje,\
+    \ odpowiedzi na pisma,\n\npami\u0119\u0107 semantyczna zawiera wzorce pism, typy\
+    \ spraw, powi\u0105zane akty prawne,\n\npami\u0119\u0107 refleksyjna gromadzi\
+    \ \u201Ebest practices\u201D obs\u0142ugi, interpretacje, typowe b\u0142\u0119\
+    dy.\n\nAgent korzystaj\u0105cy z RAE mo\u017Ce:\n\npomaga\u0107 pisa\u0107 pisma\
+    \ zgodne z dotychczasow\u0105 praktyk\u0105,\n\npodpowiada\u0107 standardowe \u015B\
+    cie\u017Cki post\u0119powa\u0144,\n\nwspiera\u0107 konsystencj\u0119 decyzji w\
+    \ ramach jednej j"
+- id: universal_rae_paper_0_41
+  metadata:
+    id: universal_rae_paper_0_41
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "ednostki.\n\n10. Ograniczenia i kierunki dalszych prac\n\nRAE jest zaprojektowany\
+    \ i zaimplementowany jako silnik pami\u0119ci do zastosowa\u0144 praktycznych,\
+    \ z warstw\u0105 matematyczn\u0105 gotow\u0105 do bada\u0144. Jednocze\u015Bnie:\n\
+    \nobecnie brakuje rozbudowanej sekcji wynik\xF3w eksperymentalnych por\xF3wnuj\u0105\
+    cych RAE z innymi podej\u015Bciami na standardowych benchmarkach,\n\npolityka\
+    \ pami\u0119ci jest heurystyczna (w oparciu o math layer), a nie nauczona metodami\
+    \ RL,\n\nwielomodelowa refleksja (multi-LLM) ma du\u017Cy potencja\u0142, ale\
+    \ wymaga systematycz"
+- id: universal_rae_paper_0_42
+  metadata:
+    id: universal_rae_paper_0_42
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "nych bada\u0144 (np. analiza rozbie\u017Cno\u015Bci modeli).\n\nDalsze prace\
+    \ mog\u0105 obejmowa\u0107:\n\nBenchmarking \u2013 zdefiniowanie i opublikowanie\
+    \ zestawu zada\u0144 testowych (np. d\u0142ugotrwa\u0142e zadania kodowe, wielodniowe\
+    \ projekty R&D, d\u0142ugie dialogi), por\xF3wnanie z innymi silnikami pami\u0119\
+    ci.\n\nUczenie polityki pami\u0119ci \u2013 wykorzystanie MDP + nagrody jako podstawy\
+    \ do uczenia polityk (np. RL, bandyty kontekstowi) steruj\u0105cych wyborem kontekstu\
+    \ i refleksji.\n\nBadanie multi-LLM \u2013 projektowanie i testowanie strategii\
+    \ wsp\xF3\u0142pracy / rywali"
+- id: universal_rae_paper_0_43
+  metadata:
+    id: universal_rae_paper_0_43
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "zacji modeli (np. panel reflektor\xF3w), analiza wp\u0142ywu na jako\u015B\
+    \u0107 i koszt.\n\nRozszerzenie governance \u2013 dopasowanie do specyficznych\
+    \ regulacji bran\u017Cowych (medycyna, finanse, sektor energetyczny).\n\n11. Podsumowanie\n\
+    \nRAE \u2013 Reflective Agentic-memory Engine \u2013 \u0142\u0105czy w sobie:\n\
+    \nczterowarstwow\u0105 pami\u0119\u0107 z ostatni\u0105 warstw\u0105 refleksyjn\u0105\
+    ,\n\nkilkuwarstwow\u0105 matematyczn\u0105 architektur\u0119 (MDP, information\
+    \ bottleneck, operator grafowy, nagroda z kosztami i governance),\n\nprodukcyjn\u0105\
+    \ implementacj\u0119 z profilami wdro\u017Ceniowymi o"
+- id: universal_rae_paper_0_44
+  metadata:
+    id: universal_rae_paper_0_44
+    importance: 0.7
+    layer: semantic
+    source: RAE_Technical_Paper
+  text: "d local-first po klaster,\n\nwarstw\u0119 governance zgodn\u0105 z wymaganiami\
+    \ nowoczesnych organizacji.\n\nTaka kombinacja \u2013 refleksyjnej pami\u0119\
+    ci, formalnego opisu matematycznego i gotowo\u015Bci wdro\u017Ceniowej \u2013\
+    \ czyni z RAE zar\xF3wno:\n\npraktyczny komponent dla system\xF3w agentowych,\n\
+    \njak i platform\u0119 badawcz\u0105 do eksploracji d\u0142ugoterminowej pami\u0119\
+    ci i refleksji w systemach AI."
+name: universal_rae_paper
+queries:
+- expected_source_ids:
+  - universal_rae_paper_0_0
+  query: Describe the details mentioned about RAE_Technical_Paper in the context of
+    part 0.
+- expected_source_ids:
+  - universal_rae_paper_0_5
+  query: Describe the details mentioned about RAE_Technical_Paper in the context of
+    part 5.
+- expected_source_ids:
+  - universal_rae_paper_0_10
+  query: Describe the details mentioned about RAE_Technical_Paper in the context of
+    part 10.
+- expected_source_ids:
+  - universal_rae_paper_0_15
+  query: Describe the details mentioned about RAE_Technical_Paper in the context of
+    part 15.
+- expected_source_ids:
+  - universal_rae_paper_0_20
+  query: Describe the details mentioned about RAE_Technical_Paper in the context of
+    part 20.
+- expected_source_ids:
+  - universal_rae_paper_0_25
+  query: Describe the details mentioned about RAE_Technical_Paper in the context of
+    part 25.
+- expected_source_ids:
+  - universal_rae_paper_0_30
+  query: Describe the details mentioned about RAE_Technical_Paper in the context of
+    part 30.
+- expected_source_ids:
+  - universal_rae_paper_0_35
+  query: Describe the details mentioned about RAE_Technical_Paper in the context of
+    part 35.
+- expected_source_ids:
+  - universal_rae_paper_0_40
+  query: Describe the details mentioned about RAE_Technical_Paper in the context of
+    part 40.
+version: '1.0'

@@ -1,0 +1,15 @@
+config:
+  top_k: 5
+description: SciFact Standard Benchmark (Subset)
+memories: []
+name: beir_scifact
+queries:
+- difficulty: medium
+  expected_source_ids: []
+  query: vitamin D3 and T cell proliferation
+- difficulty: medium
+  expected_source_ids: []
+  query: multiple myeloma complications
+- difficulty: medium
+  expected_source_ids: []
+  query: COPD persistent airflow limitation
