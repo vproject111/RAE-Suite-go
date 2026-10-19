@@ -17,8 +17,8 @@ func TestAllSixteenMCPToolsWiredAndStdio(t *testing.T) {
 	svc := NewService(store, crlSvc)
 
 	tools := svc.ListTools()
-	if len(tools) != 16 {
-		t.Fatalf("expected 16 MCP tools, got %d", len(tools))
+	if len(tools) != 31 {
+		t.Fatalf("expected 31 MCP tools, got %d", len(tools))
 	}
 
 	ctx := context.Background()

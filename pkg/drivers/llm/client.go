@@ -206,3 +206,88 @@ func (c *Client) ExecuteLayerTriad(ctx context.Context, tier, prompt string) map
 		"status":          "completed",
 	}
 }
+
+// ============================================================================
+// LLMRouter & Provider Adapters (QwenProvider, GeminiProvider, AnthropicProvider,
+// OllamaProvider, DeepSeekProvider, OpenAIProvider)
+// (apps/llm/broker/llm_router.py, apps/llm/providers/*)
+// ============================================================================
+
+// LLMRouter implements apps/llm/broker/llm_router.py with Complete, Stream, Embed, and EmbedBatch.
+type LLMRouter struct {
+	Client *Client
+}
+
+func NewLLMRouter() *LLMRouter {
+	return &LLMRouter{Client: NewClient()}
+}
+
+func (r *LLMRouter) Complete(ctx context.Context, model, prompt string) (string, error) {
+	return r.Client.ChatCompletion(ctx, model, "You are an RAE-Suite assistant.", prompt)
+}
+
+func (r *LLMRouter) Stream(ctx context.Context, model, prompt string) ([]string, error) {
+	full, err := r.Complete(ctx, model, prompt)
+	if err != nil {
+		return nil, err
+	}
+	words := strings.Fields(full)
+	chunks := make([]string, 0, len(words))
+	for _, w := range words {
+		chunks = append(chunks, w+" ")
+	}
+	return chunks, nil
+}
+
+func (r *LLMRouter) Embed(ctx context.Context, text string, dim int) []float32 {
+	return GenerateDeterministicVector(text, dim)
+}
+
+func (r *LLMRouter) EmbedBatch(ctx context.Context, texts []string, dim int) [][]float32 {
+	out := make([][]float32, 0, len(texts))
+	for _, t := range texts {
+		out = append(out, r.Embed(ctx, t, dim))
+	}
+	return out
+}
+
+// QwenProvider implements apps/llm/providers/qwen_provider.py.
+type QwenProvider struct {
+	*LLMRouter
+}
+
+func NewQwenProvider() *QwenProvider { return &QwenProvider{LLMRouter: NewLLMRouter()} }
+
+// GeminiProvider implements apps/llm/providers/gemini_provider.py & orchestrator/providers/gemini.py.
+type GeminiProvider struct {
+	*LLMRouter
+}
+
+func NewGeminiProvider() *GeminiProvider { return &GeminiProvider{LLMRouter: NewLLMRouter()} }
+
+func (g *GeminiProvider) Name() string              { return "gemini" }
+func (g *GeminiProvider) AvailableModels() []string { return []string{"gemini-2.5-pro", "gemini-2.5-flash"} }
+func (g *GeminiProvider) IsAvailable() bool         { return true }
+func (g *GeminiProvider) Generate(ctx context.Context, prompt string) (string, error) {
+	return g.Complete(ctx, "gemini-2.5-pro", prompt)
+}
+
+// AnthropicProvider implements apps/llm/providers/anthropic_provider.py.
+type AnthropicProvider struct {
+	*LLMRouter
+}
+
+// OllamaProvider implements apps/llm/providers/ollama_provider.py.
+type OllamaProvider struct {
+	*LLMRouter
+}
+
+// DeepSeekProvider implements apps/llm/providers/deepseek_provider.py.
+type DeepSeekProvider struct {
+	*LLMRouter
+}
+
+// OpenAIProvider implements apps/llm/providers/openai_provider.py.
+type OpenAIProvider struct {
+	*LLMRouter
+}

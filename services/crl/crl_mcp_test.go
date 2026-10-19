@@ -23,8 +23,8 @@ func TestRAECRLAndMCPIntegration(t *testing.T) {
 	crlSvc := crl.NewService(store, store, guard)
 	mcpSvc := mcp.NewService(store, crlSvc)
 
-	if len(mcpSvc.ListTools()) != 16 {
-		t.Fatalf("expected 16 total MCP tools (9 RAE-Suite + 7 RAE-CRL), got %d", len(mcpSvc.ListTools()))
+	if len(mcpSvc.ListTools()) != 31 {
+		t.Fatalf("expected 31 total MCP tools (13 RAE-Suite + 7 RAE-CRL + 5 Supervisor + 6 Integrations), got %d", len(mcpSvc.ListTools()))
 	}
 
 	// 1. Create Quick Note (24h Grace Period) via MCP

@@ -21,14 +21,23 @@ var hardcodedHomeRegex = regexp.MustCompile(`/home/[a-zA-Z0-9_\-]+/`)
 // ApplyRecipe executes a Feniks refactoring recipe on sourceCode and verifies behavioral parity.
 func (s *Service) ApplyRecipe(recipeID, sourceCode string) RecipeExecutionResult {
 	transformed := sourceCode
+	engine := NewRefactorEngine()
 	switch recipeID {
 	case "feniks-01-extract-port":
 		transformed = "// Extracted Hexagonal Port Interface\ntype StoragePort interface {\n\tSave(id string, data []byte) error\n}\n\n" + sourceCode
-	case "feniks-02-angularjs-component":
+	case "feniks-02-angularjs-component", "controller_to_component":
 		transformed = strings.ReplaceAll(sourceCode, "$scope.", "this.")
 		if !strings.Contains(transformed, "angular.module") {
 			transformed = "// Migrated AngularJS Controller to Component Wrapper (Strict UI Freeze preserved)\n" + transformed
 		}
+	case "directive_to_component":
+		transformed = engine.DirectiveRecipe.Execute(sourceCode)
+	case "routing_to_app_router":
+		transformed = engine.RoutingRecipe.Execute(sourceCode)
+	case "scope_to_hooks":
+		transformed = engine.ScopeRecipe.Execute(sourceCode)
+	case "template_to_jsx":
+		transformed = engine.TemplateRecipe.Execute(sourceCode)
 	case "feniks-03-zero-hardcode-path":
 		transformed = hardcodedHomeRegex.ReplaceAllString(sourceCode, "${PROJECT_ROOT}/")
 	case "feniks-04-controller-split":
