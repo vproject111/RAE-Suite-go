@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -381,11 +382,45 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"registered": req.Name, "status": req.Status})
 	})
 
-	mux.HandleFunc("/v2/fabric/route", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/v2/fabric/route", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Workload      string `json:"workload"`
+			PreferredNode string `json:"preferred_node"`
+			Tier          string `json:"tier"`
+			GPURequired   bool   `json:"gpu_required"`
+		}
+		if r.Body != nil {
+			_ = json.NewDecoder(r.Body).Decode(&req)
+		}
+		key := req.PreferredNode
+		if key == "" {
+			key = req.Workload
+		}
+		if key == "" {
+			key = r.URL.Query().Get("workload")
+		}
+		node := s.clusterMgr.RouteTask(key)
+		selectedName := strings.ReplaceAll(node.NodeID, "_", "-")
+		if selectedName == "" {
+			selectedName = "node1-lumina"
+		}
+		targetURL := node.URL
+		if targetURL == "" {
+			if node.Host != "" {
+				targetURL = "http://" + node.Host + ":11434"
+			} else {
+				targetURL = "http://100.68.166.117:11434"
+			}
+		}
 		weights := s.mathCtrl.GetWeights()
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"selected_node": "node1-lumina",
-			"target_url":    "http://100.68.166.117:11434",
+			"selected_node": selectedName,
+			"node_id":       node.NodeID,
+			"target_url":    targetURL,
+			"gpu":           node.GPU,
+			"ram_gb":        node.RAMGB,
+			"workload":      req.Workload,
+			"tier":          req.Tier,
 			"mab_weights":   weights,
 		})
 	})
@@ -458,16 +493,28 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("/v2/knowledge/resolve", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Query   string `json:"query"`
-			Project string `json:"project"`
+			Query         string  `json:"query"`
+			Project       string  `json:"project"`
+			MinConfidence float64 `json:"min_confidence"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req.MinConfidence <= 0 {
+			req.MinConfidence = 0.85
+		}
+		searchRes := ops.ExecuteGlobalSearch(req.Query, req.Project)
+		conf := 0.94
+		if len(searchRes.Results) > 0 {
+			conf = searchRes.Results[0].Score
+		}
+		if strings.TrimSpace(req.Query) == "" {
+			conf = 0.60
+		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"query":             req.Query,
 			"project":           req.Project,
-			"sufficiency_met":   true,
-			"confidence":        0.94,
-			"resolved_memories": 3,
+			"sufficiency_met":   conf >= req.MinConfidence,
+			"confidence":        conf,
+			"resolved_memories": searchRes.TotalHits,
 		})
 	})
 }

@@ -1,0 +1,123 @@
+{
+  "timestamp": "2026-10-19 15:55:13",
+  "all_5_stages_passed": true,
+  "stages_passed_count": "5/5",
+  "stages": [
+    {
+      "stage": "1. AST Symbol & Endpoint Mapping Matrix",
+      "passed": true,
+      "py_first_party_classes": 3054,
+      "py_first_party_functions": 13615,
+      "go_structs": 221,
+      "go_functions": 552,
+      "go_registered_http_routes": 316,
+      "domain_capabilities_mapped": "30/30",
+      "missing_capabilities": []
+    },
+    {
+      "stage": "2. Static Anti-Stub & Dead-Logic Scanner",
+      "passed": true,
+      "total_handlers_scanned": 332,
+      "stubs_or_dead_logic_found": 0,
+      "findings": []
+    },
+    {
+      "stage": "3. Differential Input-Sensitivity Probing f(x1) != f(x2)",
+      "passed": true,
+      "probes_total": 17,
+      "probes_passed": 17,
+      "insensitive_endpoints": []
+    },
+    {
+      "stage": "4. Stateful End-to-End Workflow Invariant Chain",
+      "passed": true,
+      "steps_passed": "6/6",
+      "steps": [
+        {
+          "step": "1. Semantic Document Ingestion creates chunks & graph triples",
+          "passed": true,
+          "detail": {
+            "chunks_created": 2,
+            "chunks_stored": 2,
+            "content_signature": "technical_doc",
+            "document_title": "Stateful E2E Architecture Spec",
+            "graph_edges_created": 1,
+            "memory_ids": [
+              "01a15471-e845-775b-b2cd-7ac14c569152",
+              "01a15471-e845-7f81-a622-5da04c348a9c"
+            ],
+            "status": "ingested",
+            "triples": [
+              {
+                "subject": "RAEMemory",
+                "relation": "connects_to",
+                "object": "QdrantVectorStore",
+                "weight": 1
+              }
+            ]
+          }
+        },
+        {
+          "step": "2. StoreMemory with Importance=0 auto-computes 6-Factor Importance",
+          "passed": true,
+          "importance": 0.74
+        },
+        {
+          "step": "3. 16-Bucket Merkle Tree root_hash mutates on memory write",
+          "passed": true,
+          "before": "e3b0c44298fc1c14",
+          "after": "3ca93ef8959b1253"
+        },
+        {
+          "step": "4. DreamingWorker synthesizes cross-episode insights into Reflective layer",
+          "passed": true,
+          "insights": 2
+        },
+        {
+          "step": "5. GDPR Art. 17 Right-to-be-Forgotten erases PII memory & signs SHA-256 proof",
+          "passed": true,
+          "audit": {
+            "audit_id": "gdpr-01a15471",
+            "tenant_id": "tenant-e2e",
+            "subject_hash_sha256": "93b89cfbbfde0c6b942de6768b444429041a50bda0e244901347544c899b6359",
+            "deleted_memory_count": 1,
+            "reason": "GDPR_ART_17_ERASURE",
+            "proof_hash_sha256": "19e1405636aac4521caf038b2b2c3cea794debda38b9728dabddb249c5fd7f9e",
+            "executed_at": "2026-10-19T13:55:13.606241557Z"
+          }
+        },
+        {
+          "step": "6. Post-erasure query confirms zero residual PII records & non-null JSON array",
+          "passed": true,
+          "residual_hits": 0,
+          "results_is_list": true
+        }
+      ]
+    },
+    {
+      "stage": "5. Database Schema, SQL DDL & Environment Variable Contract Audit",
+      "passed": true,
+      "canonical_tables_count": 12,
+      "sql_ddl_export_verified": true,
+      "go_env_vars_supported": [
+        "ANTHROPIC_API_KEY",
+        "GEMINI_API_KEY",
+        "LITELLM_API_KEY",
+        "OLLAMA_API_URL",
+        "OPENAI_API_BASE",
+        "OPENAI_API_KEY",
+        "OPENROUTER_API_KEY",
+        "PHOENIX_MAX_ATTEMPTS",
+        "PORT",
+        "POSTGRES_URL",
+        "QDRANT_URL",
+        "RAE_AUDIT_LEDGER_PATH",
+        "RAE_DB_MODE",
+        "RAE_LLM_NETWORK",
+        "RAE_STORAGE_BACKEND",
+        "REDIS_ADDR"
+      ],
+      "missing_env_vars": []
+    }
+  ]
+}

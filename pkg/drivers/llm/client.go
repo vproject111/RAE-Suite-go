@@ -39,6 +39,15 @@ func NewClient() *Client {
 	if apiKey == "" {
 		apiKey = os.Getenv("LITELLM_API_KEY")
 	}
+	if apiKey == "" {
+		apiKey = os.Getenv("OPENAI_API_KEY")
+	}
+	if apiKey == "" {
+		apiKey = os.Getenv("ANTHROPIC_API_KEY")
+	}
+	if apiKey == "" {
+		apiKey = os.Getenv("GEMINI_API_KEY")
+	}
 	allowNet := os.Getenv("RAE_LLM_NETWORK") == "1" || os.Getenv("RAE_LLM_NETWORK") == "true"
 	return &Client{
 		OllamaURL:     strings.TrimRight(ollamaURL, "/"),
