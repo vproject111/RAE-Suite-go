@@ -352,7 +352,7 @@ func (s *Service) registerOpsRoutes(mux *http.ServeMux) {
 	})
 
 	// 17. RAE Global Search Engine (Federated across live Memory, CRL, AuditLedger, Quality)
-	mux.HandleFunc("/v2/portal/global-search", func(w http.ResponseWriter, r *http.Request) {
+	globalSearchHandler := func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Query   string `json:"query"`
 			Project string `json:"project"`
@@ -379,5 +379,7 @@ func (s *Service) registerOpsRoutes(mux *http.ServeMux) {
 				"PDF/X-4 DTP 3mm Bleed & TAC <= 300% Audit",
 			},
 		))
-	})
+	}
+	mux.HandleFunc("/v2/portal/global-search", globalSearchHandler)
+	mux.HandleFunc("/v2/ops/global-search", globalSearchHandler)
 }
