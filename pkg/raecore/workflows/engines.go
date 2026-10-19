@@ -322,7 +322,7 @@ type ClaimCheckManager struct {
 
 func NewClaimCheckManager(storageDir string) *ClaimCheckManager {
 	if storageDir == "" {
-		storageDir = ".rae_claim_store"
+		storageDir = filepath.Join(os.TempDir(), "rae_claim_store")
 	}
 	_ = os.MkdirAll(storageDir, 0o755)
 	return &ClaimCheckManager{
