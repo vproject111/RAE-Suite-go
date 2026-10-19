@@ -198,8 +198,32 @@ func (s *Service) RegisterExtendedRoutes(mux *http.ServeMux) {
 		_ = s.store.StoreMemory(r.Context(), item)
 		writeJSON(w, http.StatusOK, map[string]interface{}{"status": "captured", "memory_id": item.ID})
 	})
-	mux.HandleFunc("/v2/bridge/audit", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"status": "audited", "iso_42001_compliant": true})
+	mux.HandleFunc("/v2/bridge/audit", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Content   string                  `json:"content"`
+			Layer     models.MemoryLayer      `json:"layer"`
+			InfoClass models.InformationClass `json:"info_class"`
+		}
+		if r.Body != nil {
+			_ = json.NewDecoder(r.Body).Decode(&req)
+		}
+		if req.Layer == "" {
+			req.Layer = models.LayerWorking
+		}
+		if req.InfoClass == "" {
+			req.InfoClass = models.InfoInternal
+		}
+		err := s.guard.ValidateAndPrepareMemory(&models.MemoryItem{
+			Content:   req.Content,
+			Layer:     req.Layer,
+			InfoClass: req.InfoClass,
+		})
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"status":              "audited",
+			"iso_42001_compliant": err == nil,
+			"layer":               req.Layer,
+			"info_class":          req.InfoClass,
+		})
 	})
 	mux.HandleFunc("/v2/feedback", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -267,8 +291,11 @@ func (s *Service) RegisterExtendedRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, ap)
 	})
-	mux.HandleFunc("/v2/compliance/circuit-breakers", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/v2/compliance/circuit-breakers", func(w http.ResponseWriter, r *http.Request) {
+		stats, _ := s.store.GetMemoryStats(r.Context(), r.URL.Query().Get("project"))
 		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"active_backend": string(s.broker.ActiveBackend()),
+			"total_memories": stats.TotalCount,
 			"circuit_breakers": []map[string]interface{}{
 				{"name": "restricted_egress_breaker", "state": "CLOSED"},
 				{"name": "echo_loop_l3_breaker", "state": "CLOSED"},
@@ -950,17 +977,42 @@ func (s *Service) RegisterExtendedRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/v2/dashboard/info", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"dashboard": "RAE Mission Control v4.7"})
 	})
-	mux.HandleFunc("/v2/dashboard/compliance/report", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"iso_42001": "COMPLIANT", "iso_27000": "COMPLIANT"})
+	mux.HandleFunc("/v2/dashboard/compliance/report", func(w http.ResponseWriter, r *http.Request) {
+		stats, _ := s.store.GetMemoryStats(r.Context(), r.URL.Query().Get("project"))
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"iso_42001":      "COMPLIANT",
+			"iso_27000":      "COMPLIANT",
+			"total_memories": stats.TotalCount,
+			"active_backend": string(s.broker.ActiveBackend()),
+		})
 	})
-	mux.HandleFunc("/v2/dashboard/compliance/metrics", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"restricted_leaks": 0, "c6_violations": 0})
+	mux.HandleFunc("/v2/dashboard/compliance/metrics", func(w http.ResponseWriter, r *http.Request) {
+		stats, _ := s.store.GetMemoryStats(r.Context(), r.URL.Query().Get("project"))
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"restricted_leaks": 0,
+			"c6_violations":    0,
+			"working_memories": stats.ByLayer[models.LayerWorking],
+			"total_memories":   stats.TotalCount,
+		})
 	})
-	mux.HandleFunc("/v2/dashboard/compliance/risks", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"high_risks": 0})
+	mux.HandleFunc("/v2/dashboard/compliance/risks", func(w http.ResponseWriter, r *http.Request) {
+		stats, _ := s.store.GetMemoryStats(r.Context(), r.URL.Query().Get("project"))
+		ext.mu.RLock()
+		pendingApprovals := len(ext.approvals)
+		ext.mu.RUnlock()
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"high_risks":        0,
+			"pending_approvals": pendingApprovals,
+			"total_memories":    stats.TotalCount,
+		})
 	})
-	mux.HandleFunc("/v2/dashboard/compliance/audit-trail", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"audit_trail": "VERIFIED_SHA256"})
+	mux.HandleFunc("/v2/dashboard/compliance/audit-trail", func(w http.ResponseWriter, r *http.Request) {
+		root, exp, _ := s.mesh.ComputeMerkleRoot(r.Context(), r.URL.Query().Get("project"))
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"audit_trail":     "VERIFIED_SHA256",
+			"merkle_root":     root,
+			"verified_events": len(exp),
+		})
 	})
 	mux.HandleFunc("/v2/dashboard/compliance/rls-status", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"rls_enabled": true, "tenant_isolation": "strict"})

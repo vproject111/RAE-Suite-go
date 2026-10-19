@@ -1,4 +1,4 @@
-.PHONY: all build test clean build-cross
+.PHONY: all build test clean build-cross audit-5stage verify-parity
 
 BIN_DIR := bin
 MODULES := rae-memory rae-crl rae-mcp rae-suite rae-quality rae-lab rae-phoenix rae-hive rae-portal rae
@@ -23,6 +23,12 @@ build-cross:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o $(BIN_DIR)/cross/rae-linux-arm64 ./cmd/rae
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o $(BIN_DIR)/cross/rae-windows-amd64.exe ./cmd/rae
 	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o $(BIN_DIR)/cross/rae-darwin-arm64 ./cmd/rae
+
+audit-5stage: build
+	python3 scripts/reusable_5stage_parity_auditor.py
+
+verify-parity: build
+	python3 scripts/verify_python_vs_go_parity.py
 
 clean:
 	rm -rf $(BIN_DIR)

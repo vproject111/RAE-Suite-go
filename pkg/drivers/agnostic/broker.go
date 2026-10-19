@@ -175,6 +175,8 @@ func (q *QdrantRESTAdapter) UpsertPoint(ctx context.Context, item *models.Memory
 type AgnosticStorageBroker struct {
 	mu            sync.RWMutex
 	activeBackend BackendType
+	DBMode        string
+	PostgresURL   string
 	backends      map[BackendType]ports.MemoryStoragePort
 	qdrant        *QdrantRESTAdapter
 	redis         *RedisRESPClient
@@ -185,8 +187,18 @@ func NewAgnosticStorageBroker(initialPrimary ports.MemoryStoragePort) *AgnosticS
 	if initialPrimary == nil {
 		initialPrimary = memorystore.NewUnifiedStore(nil, nil)
 	}
+	dbMode := os.Getenv("RAE_DB_MODE")
+	if dbMode == "" {
+		dbMode = "migrate"
+	}
+	pgURL := os.Getenv("POSTGRES_URL")
+	if pgURL == "" {
+		pgURL = "postgres://127.0.0.1:5432/rae"
+	}
 	b := &AgnosticStorageBroker{
 		activeBackend: BackendEmbedded,
+		DBMode:        dbMode,
+		PostgresURL:   pgURL,
 		backends: map[BackendType]ports.MemoryStoragePort{
 			BackendEmbedded: initialPrimary,
 			BackendPostgres: memorystore.NewUnifiedStore(nil, nil),
@@ -291,6 +303,7 @@ func (b *AgnosticStorageBroker) ExportSQL(ctx context.Context) (string, int, err
 	var sb strings.Builder
 	sb.WriteString("BEGIN;\n")
 	sb.WriteString("CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, content TEXT NOT NULL, layer TEXT NOT NULL, tenant_id TEXT NOT NULL, project TEXT NOT NULL, info_class TEXT NOT NULL, importance DOUBLE PRECISION NOT NULL, content_hash TEXT NOT NULL);\n")
+	sb.WriteString("CREATE TABLE IF NOT EXISTS governance_outbox (id TEXT PRIMARY KEY, event_type TEXT NOT NULL, payload JSONB NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());\n")
 	for _, sc := range items {
 		m := sc.Memory
 		safeContent := strings.ReplaceAll(m.Content, "'", "''")
@@ -306,6 +319,7 @@ func (b *AgnosticStorageBroker) ExportSQL(ctx context.Context) (string, int, err
 func (b *AgnosticStorageBroker) ListBackends(ctx context.Context) []BackendStatus {
 	b.mu.RLock()
 	active := b.activeBackend
+	pgURL := b.PostgresURL
 	qDims := make(map[string]int, len(b.qdrant.VectorDimensions))
 	for k, v := range b.qdrant.VectorDimensions {
 		qDims[k] = v
@@ -319,7 +333,7 @@ func (b *AgnosticStorageBroker) ListBackends(ctx context.Context) []BackendStatu
 		ep    string
 	}{
 		{BackendEmbedded, "in-process-ram-jsonl-hnsw", "file://data/memories_snapshot.json"},
-		{BackendPostgres, "sql-12-tables-rls-portable", "postgres://127.0.0.1:5432/rae"},
+		{BackendPostgres, "sql-12-tables-rls-portable", pgURL},
 		{BackendQdrant, "http-rest-named-vectors", b.qdrant.BaseURL},
 		{BackendRedis, "tcp-resp-zero-cgo", "redis://" + b.redis.Addr},
 		{BackendHybrid, "composite-sql-qdrant-redis-failover", "hybrid://auto-failover"},
