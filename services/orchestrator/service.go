@@ -14,6 +14,7 @@ import (
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/economy"
 	raemath "github.com/vproject111/RAE-Suite-go/pkg/raecore/math"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/models"
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/ops"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/security"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/workflows"
 	"github.com/vproject111/RAE-Suite-go/services/crl"
@@ -63,33 +64,44 @@ type TriadCascadeResult struct {
 
 // Service implements Module 1: RAE-Suite Orchestrator (Stage 0 RAE-CRL ResearchStage,
 // AutonomyKernel State Machine, LayerTriadRunner, CEO Reconcile, ComputeFabricRouter,
-// and all 16 Core Audit/Batch/Cognition/Workflow/Autonomy Engines).
+// and all Core Audit/Batch/Cognition/Workflow/Autonomy/Ops/Improvement Engines).
 type Service struct {
-	mu            sync.RWMutex
-	mathCtrl      *raemath.MathController
-	crlSvc        *crl.Service
-	qualitySvc    *quality.Service
-	guard         *security.HardFramesGuard
-	llmClient     *llm.Client
-	auditLedger   *accounting.ExecutionAuditLedger
-	batchEngine   *economy.BatchOptimizationEngine
-	contextBroker *economy.ContextBroker
-	trustEval     *economy.ContextTrustEvaluator
-	semCache      *economy.HardenedSemanticCache
-	planner       *cognition.CognitivePlanner
-	council       *cognition.DynamicCouncilSelector
-	consensus     *cognition.SwarmConsensusEngine
-	specExec      *workflows.SpeculativeToolExecutor
-	claimCheck    *workflows.ClaimCheckManager
-	replayEngine  *workflows.SafeReplayEngine
-	a2aAdapter    *workflows.A2AProtocolAdapter
-	shadowEval    *workflows.ShadowEvaluator
-	curiosity     *workflows.CuriosityEngine
-	toolForge     *workflows.ToolForge
-	thinRuntime   *workflows.ThinDeviceRuntime
-	hitlRequests  map[string]HITLRequest
-	departments   map[string]map[string]interface{}
-	reconciles    int
+	mu               sync.RWMutex
+	mathCtrl         *raemath.MathController
+	crlSvc           *crl.Service
+	qualitySvc       *quality.Service
+	guard            *security.HardFramesGuard
+	llmClient        *llm.Client
+	auditLedger      *accounting.ExecutionAuditLedger
+	batchEngine      *economy.BatchOptimizationEngine
+	contextBroker    *economy.ContextBroker
+	trustEval        *economy.ContextTrustEvaluator
+	semCache         *economy.HardenedSemanticCache
+	planner          *cognition.CognitivePlanner
+	council          *cognition.DynamicCouncilSelector
+	consensus        *cognition.SwarmConsensusEngine
+	specExec         *workflows.SpeculativeToolExecutor
+	claimCheck       *workflows.ClaimCheckManager
+	replayEngine     *workflows.SafeReplayEngine
+	a2aAdapter       *workflows.A2AProtocolAdapter
+	shadowEval       *workflows.ShadowEvaluator
+	curiosity        *workflows.CuriosityEngine
+	toolForge        *workflows.ToolForge
+	thinRuntime      *workflows.ThinDeviceRuntime
+	improvementPlane *ops.ImprovementPlane
+	clusterMgr       *ops.ClusterManager
+	circuitBreaker   *ops.TransportCircuitBreaker
+	rateLimiter      *ops.DistributedRateLimiter
+	rollbackSLA      *ops.RollbackSLAManager
+	escalator        *ops.DualEscalationEngine
+	infraReconciler  *ops.InfraReconciler
+	promptRegistry   *ops.FederatedPromptRegistry
+	toolGateway      *ops.ToolGateway
+	keycloakAuth     *ops.KeycloakAuthValidator
+	evalHarness      *ops.AutonomyEvaluationHarness
+	hitlRequests     map[string]HITLRequest
+	departments      map[string]map[string]interface{}
+	reconciles       int
 }
 
 // NewService constructs the main RAE-Suite Orchestrator service.
@@ -109,28 +121,39 @@ func NewService(mc *raemath.MathController, crlSvc *crl.Service, qualSvc *qualit
 	a2a.RegisterAgent("rae-quality", "rae-quality-default-hmac-secret")
 
 	return &Service{
-		mathCtrl:      mc,
-		crlSvc:        crlSvc,
-		qualitySvc:    qualSvc,
-		guard:         guard,
-		llmClient:     llm.NewClient(),
-		auditLedger:   accounting.NewExecutionAuditLedger("", 0),
-		batchEngine:   economy.NewBatchOptimizationEngine(1000),
-		contextBroker: economy.NewContextBroker(8000, 0.4),
-		trustEval:     economy.NewContextTrustEvaluator(),
-		semCache:      economy.NewHardenedSemanticCache(300, 0.15),
-		planner:       cognition.NewCognitivePlanner(),
-		council:       cognition.NewDynamicCouncilSelector(nil),
-		consensus:     cognition.NewSwarmConsensusEngine(),
-		specExec:      workflows.NewSpeculativeToolExecutor(nil),
-		claimCheck:    workflows.NewClaimCheckManager(""),
-		replayEngine:  workflows.NewSafeReplayEngine(),
-		a2aAdapter:    a2a,
-		shadowEval:    workflows.NewShadowEvaluator(),
-		curiosity:     workflows.NewCuriosityEngine(),
-		toolForge:     workflows.NewToolForge(),
-		thinRuntime:   workflows.NewThinDeviceRuntime(),
-		hitlRequests:  make(map[string]HITLRequest),
+		mathCtrl:         mc,
+		crlSvc:           crlSvc,
+		qualitySvc:       qualSvc,
+		guard:            guard,
+		llmClient:        llm.NewClient(),
+		auditLedger:      accounting.NewExecutionAuditLedger("", 0),
+		batchEngine:      economy.NewBatchOptimizationEngine(1000),
+		contextBroker:    economy.NewContextBroker(8000, 0.4),
+		trustEval:        economy.NewContextTrustEvaluator(),
+		semCache:         economy.NewHardenedSemanticCache(300, 0.15),
+		planner:          cognition.NewCognitivePlanner(),
+		council:          cognition.NewDynamicCouncilSelector(nil),
+		consensus:        cognition.NewSwarmConsensusEngine(),
+		specExec:         workflows.NewSpeculativeToolExecutor(nil),
+		claimCheck:       workflows.NewClaimCheckManager(""),
+		replayEngine:     workflows.NewSafeReplayEngine(),
+		a2aAdapter:       a2a,
+		shadowEval:       workflows.NewShadowEvaluator(),
+		curiosity:        workflows.NewCuriosityEngine(),
+		toolForge:        workflows.NewToolForge(),
+		thinRuntime:      workflows.NewThinDeviceRuntime(),
+		improvementPlane: ops.NewImprovementPlane(0.05),
+		clusterMgr:       ops.NewClusterManager(),
+		circuitBreaker:   ops.NewTransportCircuitBreaker(3, 5.0),
+		rateLimiter:      ops.NewDistributedRateLimiter(60, 20.0),
+		rollbackSLA:      ops.NewRollbackSLAManager(),
+		escalator:        ops.NewDualEscalationEngine(3),
+		infraReconciler:  ops.NewInfraReconciler(),
+		promptRegistry:   ops.NewFederatedPromptRegistry(),
+		toolGateway:      ops.NewToolGateway(),
+		keycloakAuth:     ops.NewKeycloakAuthValidator("rae-keycloak-default-secret", "https://auth.dreamsoft.pro/realms/rae"),
+		evalHarness:      ops.NewAutonomyEvaluationHarness(),
+		hitlRequests:     make(map[string]HITLRequest),
 		departments: map[string]map[string]interface{}{
 			"RAE-Memory":  {"port": 8001, "status": "online"},
 			"RAE-CRL":     {"port": 8005, "status": "online"},
@@ -272,10 +295,11 @@ func (s *Service) ListHITLRequests() []HITLRequest {
 // RegisterRoutes attaches all RAE-Suite Orchestrator routes (:8009).
 func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 	s.registerCoreEngineRoutes(mux)
+	s.registerOpsRoutes(mux)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"status":     "operational",
-			"version":    "4.3.0",
+			"version":    "4.4.0",
 			"api":        "v2",
 			"quality_v2": "integrated",
 			"crl_v2":     "integrated",
