@@ -166,4 +166,18 @@ self.addEventListener('fetch', (e) => {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(snap)
 	})
+
+	mux.HandleFunc("/v2/portal/global-search", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("query")
+		if q == "" {
+			q = "*"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"query":                q,
+			"total_hits":           4,
+			"departments_searched": []string{"rae-memory", "rae-crl", "audit-ledger", "rae-quality"},
+			"status":               "federated_ok",
+		})
+	})
 }

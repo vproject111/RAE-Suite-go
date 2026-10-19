@@ -208,6 +208,27 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 		})
 	})
 
+	mux.HandleFunc("/v2/hive/atomic-slice", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Filename string `json:"filename"`
+			Code     string `json:"code"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req.Filename == "" {
+			req.Filename = "module.go"
+		}
+		slices := SliceCodeAtomically(req.Filename, req.Code)
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"filename":     req.Filename,
+			"slices_count": len(slices),
+			"slices":       slices,
+		})
+	})
+
+	mux.HandleFunc("/v2/hive/supervisor", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, s.CheckAndHealSupervisor())
+	})
+
 	mux.HandleFunc("/metrics/prometheus", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = w.Write([]byte("rae_hive_max_parallel_branches 3\nrae_hive_heartbeat_timeout_seconds 120\n"))
