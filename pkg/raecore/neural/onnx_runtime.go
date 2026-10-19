@@ -12,13 +12,14 @@ import (
 // ONNXRuntimeEngine implements a pure-Go (CGO_ENABLED=0) multi-layer neural & tensor runtime
 // replacing Python's onnxruntime.InferenceSession for dense embeddings (384d/768d) and cross-encoder reranking.
 type ONNXRuntimeEngine struct {
-	mu          sync.RWMutex
-	ModelPath   string
-	Dimension   int
-	WeightsL1   [][]float64
-	BiasL1      []float64
-	Providers   []string
-	Initialized bool
+	mu                sync.RWMutex
+	ModelPath         string
+	Dimension         int
+	WeightsL1         [][]float64
+	BiasL1            []float64
+	Providers         []string
+	LastLoadedTensors []ONNXTensor
+	Initialized       bool
 }
 
 // NewONNXRuntimeEngine initializes a deterministic neural tensor runtime with Xavier-scaled projection weights.

@@ -306,19 +306,54 @@ func (s *Service) RegisterExtendedRoutes(mux *http.ServeMux) {
 	// 4. Complete Mesh V2 (/v2/mesh/*)
 	mux.HandleFunc("/v2/mesh/invite", func(w http.ResponseWriter, r *http.Request) {
 		tok, _ := s.mesh.GenerateCapabilityToken("invited-peer", "mesh:write", 24*time.Hour)
-		writeJSON(w, http.StatusOK, map[string]interface{}{"invite_token": tok, "expires_in_hours": 24})
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"invite_code":      tok,
+			"invite_token":     tok,
+			"expires_in_hours": 24,
+		})
 	})
 	mux.HandleFunc("/v2/mesh/handshake/challenge", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"challenge": models.GenerateUUIDv7()})
 	})
 	mux.HandleFunc("/v2/mesh/join", func(w http.ResponseWriter, r *http.Request) {
-		var p raemesh.Peer
-		_ = json.NewDecoder(r.Body).Decode(&p)
-		if p.PeerID == "" {
-			p.PeerID = "peer-" + models.GenerateULID()
+		var req struct {
+			PeerID      string `json:"peer_id"`
+			MyPeerID    string `json:"my_peer_id"`
+			Name        string `json:"name"`
+			MyName      string `json:"my_name"`
+			URL         string `json:"url"`
+			MyPublicURL string `json:"my_public_url"`
+			Transport   string `json:"transport"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		pid := req.PeerID
+		if pid == "" {
+			pid = req.MyPeerID
+		}
+		if pid == "" {
+			pid = "peer-" + models.GenerateULID()
+		}
+		name := req.Name
+		if name == "" {
+			name = req.MyName
+		}
+		if name == "" {
+			name = pid
+		}
+		u := req.URL
+		if u == "" {
+			u = req.MyPublicURL
+		}
+		p := raemesh.Peer{
+			PeerID:        pid,
+			Name:          name,
+			URL:           u,
+			Transport:     "http",
+			TransportType: "http",
+			Status:        "active",
 		}
 		s.mesh.RegisterPeer(p)
-		writeJSON(w, http.StatusOK, map[string]interface{}{"status": "joined", "peer": p})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"status": "paired", "peer": p})
 	})
 	mux.HandleFunc("/v2/mesh/handshake", func(w http.ResponseWriter, r *http.Request) {
 		tok, _ := s.mesh.GenerateCapabilityToken("handshake-peer", "mesh:write", 1*time.Hour)

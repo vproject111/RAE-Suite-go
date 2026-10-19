@@ -29,10 +29,13 @@ func main() {
 
 	port := os.Getenv("PORT")
 	if port == "" {
+		port = os.Getenv("RAE_MCP_PORT")
+	}
+	if port == "" {
 		port = "8005"
 	}
 	mux := http.NewServeMux()
 	mcpSvc.RegisterRoutes(mux)
-	log.Printf("RAE-MCP Unified Server (Go Native v4.0) listening on :%s", port)
+	log.Printf("RAE-MCP Unified Server (Go Native v5.3.0) listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, mux))
 }
