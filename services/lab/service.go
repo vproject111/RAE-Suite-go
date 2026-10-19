@@ -117,6 +117,7 @@ func (s *Service) GetCandidates(statusFilter string) []CandidateGuardrail {
 
 // RegisterRoutes attaches RAE-Lab HTTP & MCP endpoints (:8011).
 func (s *Service) RegisterRoutes(mux *http.ServeMux) {
+	s.registerV47LabRoutes(mux)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{

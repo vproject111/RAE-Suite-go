@@ -281,10 +281,11 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 	s.RegisterExtendedRoutes(mux)
 	s.registerV45Routes(mux)
 	s.registerV46Routes(mux)
+	s.registerV47Routes(mux)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"status":          "healthy",
-			"version":         "4.6.0",
+			"version":         "4.7.0",
 			"storage_backend": string(s.broker.ActiveBackend()),
 			"layers":          models.AllMemoryLayers(),
 		})
@@ -314,6 +315,12 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 					item.Metadata["pii_redactions"] = scrubRes.RedactionsCount
 				}
 			}
+			if item.Importance <= 0 {
+				scored, _ := s.store.QueryMemories(r.Context(), ports.QueryFilter{Project: item.Project, TopK: 25})
+				existing := unwrapScoredMemories(scored)
+				bd := raemath.ComputeSixFactorImportance(item, existing, len(item.Tags))
+				item.Importance = bd.CompositeScore
+			}
 			if err := s.store.StoreMemory(r.Context(), &item); err != nil {
 				writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 				return
@@ -326,10 +333,11 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 				})
 			}
 			writeJSON(w, http.StatusOK, map[string]interface{}{
-				"id":        item.ID,
-				"memory_id": item.ID,
-				"layer":     item.Layer,
-				"status":    "saved",
+				"id":         item.ID,
+				"memory_id":  item.ID,
+				"layer":      item.Layer,
+				"importance": item.Importance,
+				"status":     "saved",
 			})
 		case http.MethodDelete:
 			id := strings.TrimPrefix(r.URL.Path, "/v2/memories/")
