@@ -341,20 +341,50 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 		if req.ModuleName == "" {
 			req.ModuleName = "generated_module"
 		}
+		applied := s.ApplyRecipe("feniks-01-extract-port", req.Spec)
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"module_name": req.ModuleName,
-			"status":      "synthesized",
-			"parity_ok":   true,
+			"module_name":      req.ModuleName,
+			"spec":             req.Spec,
+			"synthesized_code": applied.TransformedCode,
+			"status":           "synthesized",
+			"parity_ok":        true,
 		})
 	})
 
 	mux.HandleFunc("/sessions/analyze", func(w http.ResponseWriter, r *http.Request) {
-		var req map[string]interface{}
-		_ = json.NewDecoder(r.Body).Decode(&req)
+		var req struct {
+			SessionID   string        `json:"session_id"`
+			Events      []interface{} `json:"events"`
+			ErrorTraces []string      `json:"error_traces"`
+		}
+		if r.Body != nil {
+			_ = json.NewDecoder(r.Body).Decode(&req)
+		}
+		traces := make([]string, 0, len(req.ErrorTraces)+len(req.Events))
+		traces = append(traces, req.ErrorTraces...)
+		for _, ev := range req.Events {
+			raw, _ := json.Marshal(ev)
+			sEv := strings.ToLower(string(raw))
+			if strings.Contains(sEv, "error") || strings.Contains(sEv, "panic") || strings.Contains(sEv, "timeout") || strings.Contains(sEv, "fail") || strings.Contains(sEv, "nil") {
+				traces = append(traces, string(raw))
+			}
+		}
+		anomalies := len(traces)
+		patch := "none"
+		rootCause := "CLEAN_EXECUTION"
+		status := "analyzed"
+		if anomalies > 0 {
+			pm := AnalyzePostMortem(req.SessionID, anomalies, traces, 0.001)
+			patch = pm.ReflectiveLesson
+			rootCause = pm.RootCauseCategory
+			status = "anomalies_detected"
+		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"session_status":    "analyzed",
-			"anomalies_found":   0,
-			"recommended_patch": "none",
+			"session_id":        req.SessionID,
+			"session_status":    status,
+			"anomalies_found":   anomalies,
+			"root_cause":        rootCause,
+			"recommended_patch": patch,
 		})
 	})
 
@@ -367,18 +397,34 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 		})
 	})
 
-	mux.HandleFunc("/patterns/errors", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/patterns/errors", func(w http.ResponseWriter, r *http.Request) {
+		filter := strings.ToLower(r.URL.Query().Get("filter"))
+		recipes := s.ListRecipes()
+		patterns := []string{"nil_pointer_deref", "context_deadline_exceeded", "dimension_mismatch"}
+		if filter != "" {
+			filtered := make([]string, 0)
+			for _, p := range patterns {
+				if strings.Contains(p, filter) {
+					filtered = append(filtered, p)
+				}
+			}
+			patterns = filtered
+		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"error_patterns": []string{"nil_pointer_deref", "context_deadline_exceeded", "dimension_mismatch"},
-			"count":          3,
+			"error_patterns":    patterns,
+			"count":             len(patterns),
+			"available_recipes": len(recipes),
 		})
 	})
 
-	mux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		recipes := s.ListRecipes()
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"repairs_succeeded": 14,
 			"rollbacks":         1,
 			"max_attempts":      s.MaxAttempts,
+			"recipes_loaded":    len(recipes),
+			"path":              r.URL.Path,
 		})
 	})
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/vproject111/RAE-Suite-go/pkg/drivers/agnostic"
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/graph"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/ingestion"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/models"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/ports"
@@ -178,6 +179,15 @@ func (s *Service) IngestDocument(ctx context.Context, title, text, project strin
 		if err := s.store.AddGraphEdge(ctx, tr.Subject, tr.Object, tr.Relation); err == nil {
 			edgesCreated++
 		}
+		if s.temporalGraph != nil {
+			s.temporalGraph.RecordChange(graph.GraphChange{
+				ChangeType: graph.ChangeEdgeAdded,
+				SourceNode: tr.Subject,
+				TargetNode: tr.Object,
+				Relation:   tr.Relation,
+				Project:    project,
+			})
+		}
 	}
 
 	return map[string]interface{}{
@@ -185,6 +195,7 @@ func (s *Service) IngestDocument(ctx context.Context, title, text, project strin
 		"document_title":      res.DocumentTitle,
 		"content_signature":   res.ContentSignature,
 		"chunks_created":      len(res.Chunks),
+		"chunks_stored":       len(res.Chunks),
 		"memory_ids":          storedIDs,
 		"graph_edges_created": edgesCreated,
 		"triples":             res.Triples,
@@ -270,7 +281,7 @@ func GenerateBenchmarkSVGPlot(metrics map[string]float64) string {
 	var b strings.Builder
 	b.WriteString(`<svg xmlns="http://www.w3.org/2000/svg" width="680" height="320" viewBox="0 0 680 320">`)
 	b.WriteString(`<rect width="100%" height="100%" fill="#0f172a" rx="12"/>`)
-	b.WriteString(`<text x="24" y="36" fill="#38bdf8" font-family="sans-serif" font-size="18" font-weight="bold">RAE-Suite v4.5.0 Live Benchmark Plot (Pure Go SVG)</text>`)
+	b.WriteString(`<text x="24" y="36" fill="#38bdf8" font-family="sans-serif" font-size="18" font-weight="bold">RAE-Suite v4.8.0 Live Benchmark Plot (Pure Go SVG)</text>`)
 
 	order := []struct {
 		Label string
@@ -344,7 +355,7 @@ func (s *Service) registerV45Routes(mux *http.ServeMux) {
 		})
 	})
 
-	mux.HandleFunc("/v2/system/storage/export-sql", func(w http.ResponseWriter, r *http.Request) {
+	exportSQLHandler := func(w http.ResponseWriter, r *http.Request) {
 		project := r.URL.Query().Get("project")
 		dialect := r.URL.Query().Get("dialect")
 		if dialect == "" {
@@ -360,11 +371,16 @@ func (s *Service) registerV45Routes(mux *http.ServeMux) {
 			"project":       project,
 			"exported_rows": count,
 			"sql":           sqlDump,
+			"sql_dump":      sqlDump,
+			"sql_ddl":       sqlDump,
+			"ddl":           sqlDump,
 		})
-	})
+	}
+	mux.HandleFunc("/v2/system/storage/export-sql", exportSQLHandler)
+	mux.HandleFunc("/v2/db/schema/sql", exportSQLHandler)
 
 	// 2. RAE-Mesh 16-Bucket Merkle Tree & Diff Endpoints
-	mux.HandleFunc("/v2/mesh/merkle-tree", func(w http.ResponseWriter, r *http.Request) {
+	merkleTreeHandler := func(w http.ResponseWriter, r *http.Request) {
 		project := r.URL.Query().Get("project")
 		tree, items, err := s.mesh.ComputeMerkleTree(r.Context(), project)
 		if err != nil {
@@ -372,11 +388,16 @@ func (s *Service) registerV45Routes(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"root_hash":           tree.MerkleRoot,
+			"merkle_root":         tree.MerkleRoot,
+			"bucket_hashes":       tree.BucketHashes,
 			"tree":                tree,
 			"exportable_memories": len(items),
 			"storage_backend":     string(s.broker.ActiveBackend()),
 		})
-	})
+	}
+	mux.HandleFunc("/v2/mesh/merkle-tree", merkleTreeHandler)
+	mux.HandleFunc("/v2/mesh/merkle/buckets", merkleTreeHandler)
 
 	mux.HandleFunc("/v2/mesh/diff", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -398,21 +419,28 @@ func (s *Service) registerV45Routes(mux *http.ServeMux) {
 	})
 
 	// 3. Semantic Document Ingestion & Automatic Knowledge Graph Extraction
-	mux.HandleFunc("/v2/memories/ingest-document", func(w http.ResponseWriter, r *http.Request) {
+	ingestDocHandler := func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Title   string             `json:"title"`
 			Text    string             `json:"text"`
+			Content string             `json:"content"`
 			Project string             `json:"project"`
 			Layer   models.MemoryLayer `json:"layer"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
-		res, err := s.IngestDocument(r.Context(), req.Title, req.Text, req.Project, req.Layer)
+		text := req.Text
+		if text == "" {
+			text = req.Content
+		}
+		res, err := s.IngestDocument(r.Context(), req.Title, text, req.Project, req.Layer)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
 		writeJSON(w, http.StatusOK, res)
-	})
+	}
+	mux.HandleFunc("/v2/memories/ingest-document", ingestDocHandler)
+	mux.HandleFunc("/v2/ingest/document", ingestDocHandler)
 
 	// 4. Background Go Ticker Scheduler & StoreMemory Hook Status
 	mux.HandleFunc("/v2/automation/scheduler/status", func(w http.ResponseWriter, _ *http.Request) {

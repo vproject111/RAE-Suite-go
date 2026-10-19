@@ -5,9 +5,11 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/ops"
 )
 
-// AllPortalViews returns the 14 canonical RAE-Portal views (including RaeCrl).
+// AllPortalViews returns the 14 canonical RAE-Portal views (including RaeCrl and HermesOpenCodeEscalation).
 func AllPortalViews() []string {
 	return []string{
 		"MissionControl",
@@ -16,7 +18,7 @@ func AllPortalViews() []string {
 		"EvolutionLab",
 		"PhoenixRepair",
 		"HiveSandbox",
-		"OpenClawEscalation",
+		"HermesOpenCodeEscalation",
 		"RaeCrl",
 		"MeshFederation",
 		"CentralAuditor",
@@ -40,7 +42,7 @@ func NewService() *Service {
 // TelemetrySnapshot returns aggregated status of all 9 RAE-Go departments.
 func (s *Service) TelemetrySnapshot() map[string]interface{} {
 	return map[string]interface{}{
-		"version":     "4.1.0",
+		"version":     "4.8.0",
 		"uptime_sec":  int(time.Since(s.startedAt).Seconds()),
 		"views_count": len(AllPortalViews()),
 		"departments": map[string]string{
@@ -66,7 +68,7 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		viewsHTML := strings.Join(AllPortalViews(), " · ")
-		_, _ = w.Write([]byte(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="manifest" href="/manifest.json"><title>RAE Suite v4.2 Command Center</title>
+		_, _ = w.Write([]byte(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="manifest" href="/manifest.json"><title>RAE Suite v4.8 Command Center</title>
 <style>
 body{background:#0f172a;color:#f8fafc;font-family:system-ui,-apple-system,sans-serif;margin:0;padding:1.5rem}
 header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155;padding-bottom:1rem;margin-bottom:1.5rem}
@@ -76,7 +78,7 @@ header{display:flex;justify-content:space-between;align-items:center;border-bott
 .card h3{margin:0 0 0.5rem 0;color:#38bdf8;font-size:1rem}
 .card p{margin:0;color:#94a3b8;font-size:0.85rem}
 </style></head><body>
-<header><div><h1 style="margin:0;font-size:1.5rem">RAE Suite v4.2 Command Center (PWA Offline-First)</h1><small style="color:#94a3b8">14 Integrated Views: ` + viewsHTML + `</small></div><span class="badge">ISO/IEC 42001 COMPLIANT</span></header>
+<header><div><h1 style="margin:0;font-size:1.5rem">RAE Suite v4.8 Command Center (PWA Offline-First)</h1><small style="color:#94a3b8">14 Integrated Views: ` + viewsHTML + `</small></div><span class="badge">ISO/IEC 42001 COMPLIANT</span></header>
 <div class="grid">
 <div class="card"><h3>1. MissionControl</h3><p>9/9 RAE-Go Departments Online · P50 Latency 0.08ms</p></div>
 <div class="card"><h3>2. SearchConsole</h3><p>9 Hybrid Strategies · 3 Math Engines · Named Vectors</p></div>
@@ -84,7 +86,7 @@ header{display:flex;justify-content:space-between;align-items:center;border-bott
 <div class="card"><h3>4. EvolutionLab</h3><p>MAB UCB1 Auto-Tuner · 4 Manifold Profiles</p></div>
 <div class="card"><h3>5. PhoenixRepair</h3><p>3-Attempt Closed-Loop Repair · Behavioral Parity</p></div>
 <div class="card"><h3>6. HiveSandbox</h3><p>k&le;3 Isolated Runner · Semantic Watchdog v2.3</p></div>
-<div class="card"><h3>7. OpenClawEscalation</h3><p>L3 Circuit Breaker · Echo-Loop Protection</p></div>
+<div class="card"><h3>7. HermesOpenCodeEscalation</h3><p>L3 Circuit Breaker · Hermes &amp; OpenCode Bridge</p></div>
 <div class="card"><h3>8. RaeCrl</h3><p>7 Research Artifact Types · Epistemic Energy E_CRL</p></div>
 <div class="card"><h3>9. MeshFederation</h3><p>LWW/OR-Set CRDT ·Ed25519 Signed Envelopes</p></div>
 <div class="card"><h3>10. CentralAuditor</h3><p>Native Go AST/SAST · Disjoint Reviewer/Judge Pools</p></div>
@@ -120,7 +122,7 @@ header{display:flex;justify-content:space-between;align-items:center;border-bott
 
 	mux.HandleFunc("/sw.js", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/javascript")
-		_, _ = w.Write([]byte(`const CACHE_NAME = 'rae-portal-v4.2';
+		_, _ = w.Write([]byte(`const CACHE_NAME = 'rae-portal-v4.8';
 self.addEventListener('install', (e) => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', (e) => {
@@ -168,15 +170,35 @@ self.addEventListener('fetch', (e) => {
 	})
 
 	mux.HandleFunc("/v2/portal/global-search", func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query().Get("query")
+		var body struct {
+			Query   string `json:"query"`
+			Project string `json:"project"`
+		}
+		if r.Body != nil {
+			_ = json.NewDecoder(r.Body).Decode(&body)
+		}
+		q := body.Query
+		if q == "" {
+			q = r.URL.Query().Get("query")
+		}
 		if q == "" {
 			q = "*"
 		}
+		project := body.Project
+		if project == "" {
+			project = r.URL.Query().Get("project")
+		}
+		if project == "" {
+			project = "default"
+		}
+		res := ops.ExecuteGlobalSearch(q, project)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"query":                q,
-			"total_hits":           4,
-			"departments_searched": []string{"rae-memory", "rae-crl", "audit-ledger", "rae-quality"},
+			"query":                res.Query,
+			"project":              project,
+			"total_hits":           res.TotalHits,
+			"departments_searched": res.Departments,
+			"results":              res.Results,
 			"status":               "federated_ok",
 		})
 	})

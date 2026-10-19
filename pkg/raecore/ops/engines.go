@@ -265,10 +265,11 @@ func (cm *ClusterManager) ListNodes() []ClusterNode {
 func (cm *ClusterManager) RouteTask(workloadType string) ClusterNode {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	switch strings.ToLower(workloadType) {
-	case "stress_db", "high_ram", "ollama_proxy":
+	w := strings.ToLower(strings.TrimSpace(workloadType))
+	switch {
+	case strings.Contains(w, "node3") || strings.Contains(w, "piotrek") || strings.Contains(w, "stress_db") || strings.Contains(w, "high_ram") || strings.Contains(w, "ollama_proxy"):
 		return cm.Nodes["node3_piotrek"]
-	case "extreme_benchmark", "heavy_training":
+	case strings.Contains(w, "node2") || strings.Contains(w, "julka") || strings.Contains(w, "benchmark") || strings.Contains(w, "training") || strings.Contains(w, "heavy"):
 		return cm.Nodes["node2_julka"]
 	default:
 		return cm.Nodes["node1_lumina"]

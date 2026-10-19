@@ -160,7 +160,7 @@ func (s *UnifiedStore) QueryMemories(_ context.Context, filter ports.QueryFilter
 	qTrim := strings.TrimSpace(filter.Query)
 	isWildcard := qTrim == "*" || (qTrim == "" && len(filter.QueryVector) == 0)
 
-	var results []models.ScoredMemoryItem
+	results := make([]models.ScoredMemoryItem, 0)
 	for _, m := range s.memories {
 		if m.ExpiresAt != nil && now.After(*m.ExpiresAt) {
 			continue
