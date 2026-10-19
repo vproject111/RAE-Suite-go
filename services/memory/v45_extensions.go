@@ -31,8 +31,9 @@ type BackgroundScheduler struct {
 	LastMerkleRoot   string    `json:"last_merkle_root"`
 }
 
-// UpgradeRFC6455WebSocket performs a zero-dependency RFC 6455 WebSocket handshake using net.Hijacker
-// and sends an initial JSON telemetry frame, or falls back to HTTP JSON if Upgrade header is absent.
+// UpgradeRFC6455WebSocket performs a zero-dependency RFC 6455 WebSocket handshake using net.Hijacker,
+// sends an initial JSON telemetry frame, and handles bidirectional RFC 6455 frames (Text, Ping/Pong, Close),
+// or falls back to HTTP JSON if Upgrade header is absent.
 func UpgradeRFC6455WebSocket(w http.ResponseWriter, r *http.Request, payload map[string]interface{}) {
 	wsKey := strings.TrimSpace(r.Header.Get("Sec-WebSocket-Key"))
 	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") || wsKey == "" {
@@ -68,14 +69,34 @@ func UpgradeRFC6455WebSocket(w http.ResponseWriter, r *http.Request, payload map
 	_ = rw.Flush()
 
 	rawJSON, _ := json.Marshal(payload)
-	frame := encodeWebSocketTextFrame(rawJSON)
+	frame := EncodeRFC6455Frame(0x1, rawJSON)
 	_, _ = conn.Write(frame)
+
+	// Read optional incoming client frame (with short deadline so non-interactive clients close cleanly)
+	_ = conn.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+	opcode, clientMsg, err := DecodeRFC6455Frame(rw)
+	if err == nil {
+		switch opcode {
+		case 0x9: // Ping -> reply Pong (0xA)
+			_, _ = conn.Write(EncodeRFC6455Frame(0xA, clientMsg))
+		case 0x8: // Close -> reply Close (0x8)
+			_, _ = conn.Write(EncodeRFC6455Frame(0x8, nil))
+		case 0x1, 0x2: // Text or Binary -> reply ack frame
+			ack, _ := json.Marshal(map[string]interface{}{
+				"event":       "WS_CLIENT_MESSAGE_ACK",
+				"received":    string(clientMsg),
+				"rfc6455_ack": true,
+			})
+			_, _ = conn.Write(EncodeRFC6455Frame(0x1, ack))
+		}
+	}
 }
 
-func encodeWebSocketTextFrame(msg []byte) []byte {
+// EncodeRFC6455Frame encodes an unmasked server-to-client RFC 6455 frame with FIN=1 and the given opcode.
+func EncodeRFC6455Frame(opcode byte, msg []byte) []byte {
 	length := len(msg)
 	var header []byte
-	header = append(header, 0x81) // FIN=1, Opcode=1 (Text)
+	header = append(header, 0x80|(opcode&0x0f))
 	if length <= 125 {
 		header = append(header, byte(length))
 	} else if length <= 65535 {
@@ -86,6 +107,61 @@ func encodeWebSocketTextFrame(msg []byte) []byte {
 			byte(length>>24), byte(length>>16), byte(length>>8), byte(length&0xff))
 	}
 	return append(header, msg...)
+}
+
+// DecodeRFC6455Frame decodes an incoming RFC 6455 frame (handling masked client-to-server payloads).
+func DecodeRFC6455Frame(r interface{ Read([]byte) (int, error) }) (byte, []byte, error) {
+	var hdr [2]byte
+	if _, err := r.Read(hdr[:]); err != nil {
+		return 0, nil, err
+	}
+	opcode := hdr[0] & 0x0f
+	masked := (hdr[1] & 0x80) != 0
+	length := int(hdr[1] & 0x7f)
+
+	switch length {
+	case 126:
+		var ext [2]byte
+		if _, err := r.Read(ext[:]); err != nil {
+			return 0, nil, err
+		}
+		length = (int(ext[0]) << 8) | int(ext[1])
+	case 127:
+		var ext [8]byte
+		if _, err := r.Read(ext[:]); err != nil {
+			return 0, nil, err
+		}
+		length = (int(ext[4]) << 24) | (int(ext[5]) << 16) | (int(ext[6]) << 8) | int(ext[7])
+	}
+
+	var maskKey [4]byte
+	if masked {
+		if _, err := r.Read(maskKey[:]); err != nil {
+			return 0, nil, err
+		}
+	}
+
+	payload := make([]byte, length)
+	readTotal := 0
+	for readTotal < length {
+		n, err := r.Read(payload[readTotal:])
+		if n > 0 {
+			readTotal += n
+		}
+		if err != nil {
+			break
+		}
+	}
+	if masked {
+		for i := 0; i < readTotal; i++ {
+			payload[i] ^= maskKey[i%4]
+		}
+	}
+	return opcode, payload[:readTotal], nil
+}
+
+func encodeWebSocketTextFrame(msg []byte) []byte {
+	return EncodeRFC6455Frame(0x1, msg)
 }
 
 // RunSchedulerCycle executes one deterministic maintenance cycle across Decay, Consolidation, and RAE-Mesh Merkle root calculation.

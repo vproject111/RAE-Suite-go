@@ -1,0 +1,268 @@
+name: gold_standard_10
+description: Automated gold standard with 10 unique memories
+memories:
+- id: doc_000000
+  content: 'Theoretical Model: Loop Quantum Gravity predicts decay under ambient.'
+  metadata:
+    domain: academic
+    category: physics
+    params:
+      timestamp: '2025-01-01 00:00:00'
+      uuid: 7b7abfbc
+      latency: 506
+      count: 29
+      val: 30.5
+      threshold: 85
+      percent: 13
+      result: anomalous
+      condition: ambient
+      effect: decay
+      particle: Muon
+      environment: Zero-G
+      theory: Loop Quantum Gravity
+- id: doc_000001
+  content: '2025-01-01 00:02:00 [APOLLO-12] CRITICAL motion-ctrl: Connection pool
+    P-19 overflow (65/100)'
+  metadata:
+    domain: industrial
+    category: logs
+    params:
+      timestamp: '2025-01-01 00:02:00'
+      uuid: 6d48b800
+      latency: 481
+      count: 65
+      val: 65.2
+      threshold: 85
+      percent: 71
+      result: confirmed
+      condition: ambient
+      effect: decay
+      machine: APOLLO-12
+      service: motion-ctrl
+      level: CRITICAL
+      pool_id: P-19
+      sn: SN-391704
+      job_id: JOB-00001
+- id: doc_000002
+  content: 'Research Paper: Analysis of Muon behavior in Cryogenic Chamber. Conclusion:
+    confirmed.'
+  metadata:
+    domain: academic
+    category: physics
+    params:
+      timestamp: '2025-01-01 00:04:00'
+      uuid: 812b550d
+      latency: 1434
+      count: 55
+      val: 45.5
+      threshold: 85
+      percent: 19
+      result: confirmed
+      condition: vacuum
+      effect: interference
+      particle: Muon
+      environment: Cryogenic Chamber
+      theory: Superstring Theory
+- id: doc_000003
+  content: 'Maintenance Required: UV-Lamp Intermittent signal loss. Serial Number:
+    SN-793384'
+  metadata:
+    domain: industrial
+    category: tickets
+    params:
+      timestamp: '2025-01-01 00:06:00'
+      uuid: b4ead816
+      latency: 1657
+      count: 6
+      val: 74.7
+      threshold: 85
+      percent: 68
+      result: confirmed
+      condition: vacuum
+      effect: interference
+      type: NETWORK
+      component: UV-Lamp
+      priority: MEDIUM
+      description: Intermittent signal loss
+      pool_id: P-02
+      sn: SN-793384
+      job_id: JOB-00003
+- id: doc_000004
+  content: '[NETWORK] Carriage failure: Overheating during purge. Affected Job: JOB-00004.
+    Priority: HIGH'
+  metadata:
+    domain: industrial
+    category: tickets
+    params:
+      timestamp: '2025-01-01 00:08:00'
+      uuid: 6b4ee434
+      latency: 1756
+      count: 30
+      val: 85.0
+      threshold: 85
+      percent: 48
+      result: inconclusive
+      condition: vacuum
+      effect: decay
+      type: NETWORK
+      component: Carriage
+      priority: HIGH
+      description: Overheating during purge
+      pool_id: P-07
+      sn: SN-802729
+      job_id: JOB-00004
+- id: doc_000005
+  content: '2025-01-01 00:10:00 [TJ01] INFO thermal-sync: Connection pool P-08 overflow
+    (94/100)'
+  metadata:
+    domain: industrial
+    category: logs
+    params:
+      timestamp: '2025-01-01 00:10:00'
+      uuid: c4968594
+      latency: 1098
+      count: 94
+      val: 38.4
+      threshold: 85
+      percent: 59
+      result: inconclusive
+      condition: vacuum
+      effect: decay
+      machine: TJ01
+      service: thermal-sync
+      level: INFO
+      pool_id: P-08
+      sn: SN-961722
+      job_id: JOB-00005
+- id: doc_000006
+  content: 'Maintenance Required: Encoder-Strip Vertical banding detected. Serial
+    Number: SN-246413'
+  metadata:
+    domain: industrial
+    category: tickets
+    params:
+      timestamp: '2025-01-01 00:12:00'
+      uuid: 758c0d1e
+      latency: 553
+      count: 9
+      val: 35.8
+      threshold: 85
+      percent: 72
+      result: anomalous
+      condition: vacuum
+      effect: interference
+      type: CALIBRATION
+      component: Encoder-Strip
+      priority: EMERGENCY
+      description: Vertical banding detected
+      pool_id: P-09
+      sn: SN-246413
+      job_id: JOB-00006
+- id: doc_000007
+  content: 'Maintenance Required: Printhead Vertical banding detected. Serial Number:
+    SN-930555'
+  metadata:
+    domain: industrial
+    category: tickets
+    params:
+      timestamp: '2025-01-01 00:14:00'
+      uuid: 06b2b78f
+      latency: 1843
+      count: 75
+      val: 50.0
+      threshold: 85
+      percent: 28
+      result: confirmed
+      condition: ambient
+      effect: resonance
+      type: BUG
+      component: Printhead
+      priority: LOW
+      description: Vertical banding detected
+      pool_id: P-06
+      sn: SN-930555
+      job_id: JOB-00007
+- id: doc_000008
+  content: 'Theoretical Model: Superstring Theory predicts interference under ambient.'
+  metadata:
+    domain: academic
+    category: physics
+    params:
+      timestamp: '2025-01-01 00:16:00'
+      uuid: 08646da8
+      latency: 786
+      count: 77
+      val: 94.7
+      threshold: 85
+      percent: 67
+      result: inconclusive
+      condition: ambient
+      effect: interference
+      particle: Quark-Gluon Plasma
+      environment: Zero-G
+      theory: Superstring Theory
+- id: doc_000009
+  content: 'Maintenance Required: Printhead Vertical banding detected. Serial Number:
+    SN-676510'
+  metadata:
+    domain: industrial
+    category: tickets
+    params:
+      timestamp: '2025-01-01 00:18:00'
+      uuid: e2c2023c
+      latency: 495
+      count: 8
+      val: 38.1
+      threshold: 85
+      percent: 72
+      result: confirmed
+      condition: high pressure
+      effect: decay
+      type: CALIBRATION
+      component: Printhead
+      priority: MEDIUM
+      description: Vertical banding detected
+      pool_id: P-16
+      sn: SN-676510
+      job_id: JOB-00009
+queries:
+- query: Trace request 812b550d
+  expected_source_ids:
+  - doc_000002
+  category: physics
+- query: Show me maintenance details for serial SN-802729
+  expected_source_ids:
+  - doc_000004
+  category: tickets
+- query: Show me maintenance details for serial SN-246413
+  expected_source_ids:
+  - doc_000006
+  category: tickets
+- query: Show me maintenance details for serial SN-391704
+  expected_source_ids:
+  - doc_000001
+  category: logs
+- query: Trace request 08646da8
+  expected_source_ids:
+  - doc_000008
+  category: physics
+- query: Show me maintenance details for serial SN-930555
+  expected_source_ids:
+  - doc_000007
+  category: tickets
+- query: Show me maintenance details for serial SN-676510
+  expected_source_ids:
+  - doc_000009
+  category: tickets
+- query: Show me maintenance details for serial SN-961722
+  expected_source_ids:
+  - doc_000005
+  category: logs
+- query: Show me maintenance details for serial SN-793384
+  expected_source_ids:
+  - doc_000003
+  category: tickets
+- query: Trace request 7b7abfbc
+  expected_source_ids:
+  - doc_000000
+  category: physics

@@ -1,0 +1,19 @@
+memories:
+  - id: target_001
+    text: "The secret activation code for the backup generator is [SN-VERIFY-001]. Located in basement."
+    metadata: {id: "target_001"}
+  - id: target_002
+    text: "Database maintenance report for cluster Phoenix. Stability status: GREEN. Nonce: [SN-VERIFY-002]."
+    metadata: {id: "target_002"}
+  - id: filler_001
+    text: "Random server log entry about nothing important. [SN-FILLER-001]"
+    metadata: {id: "filler_001"}
+queries:
+  - query: "[SN-VERIFY-001]"
+    expected_source_ids: ["target_001"]
+  - query: "What is the code for backup generator?"
+    expected_source_ids: ["target_001"]
+  - query: "[SN-VERIFY-002]"
+    expected_source_ids: ["target_002"]
+  - query: "Phoenix cluster status"
+    expected_source_ids: ["target_002"]
