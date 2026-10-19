@@ -310,6 +310,18 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 		})
 	})
 
+	mux.HandleFunc("/v2/phoenix/recipes/apply", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			RecipeID string `json:"recipe_id"`
+			Code     string `json:"code"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req.RecipeID == "" {
+			req.RecipeID = "feniks-03-zero-hardcode-path"
+		}
+		writeJSON(w, http.StatusOK, s.ApplyRecipe(req.RecipeID, req.Code))
+	})
+
 	mux.HandleFunc("/v2/phoenix/repair", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			BaselineOut string   `json:"baseline_out"`

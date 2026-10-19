@@ -627,6 +627,23 @@ func (s *Service) RegisterQualityRoutes(mux *http.ServeMux) {
 		})
 	})
 
+	mux.HandleFunc("/v2/quality/pdf-binary-audit", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			RawPDF string `json:"raw_pdf"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		writeJSON(w, http.StatusOK, ParseBinaryPDFAndValidate(req.RawPDF))
+	})
+
+	mux.HandleFunc("/v2/quality/multi-ast-audit", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Language string `json:"language"`
+			Code     string `json:"code"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		writeJSON(w, http.StatusOK, AnalyzeMultiLangAST(req.Language, req.Code))
+	})
+
 	mux.HandleFunc("/v2/quality/rpc", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Method string                 `json:"method"`
