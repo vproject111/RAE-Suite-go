@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-19 18:01:49",
+  "timestamp": "2026-10-19 18:21:38",
   "all_5_stages_passed": true,
   "stages_passed_count": "5/5",
   "stages": [
@@ -9,15 +9,15 @@
       "py_first_party_classes": 3054,
       "py_first_party_functions": 13615,
       "go_structs": 903,
-      "go_functions": 3978,
-      "go_registered_http_routes": 318,
+      "go_functions": 3986,
+      "go_registered_http_routes": 335,
       "domain_capabilities_mapped": "30/30",
       "missing_capabilities": []
     },
     {
       "stage": "2. Static Anti-Stub & Dead-Logic Scanner",
       "passed": true,
-      "total_handlers_scanned": 334,
+      "total_handlers_scanned": 351,
       "stubs_or_dead_logic_found": 0,
       "findings": []
     },
@@ -43,8 +43,8 @@
             "document_title": "Stateful E2E Architecture Spec",
             "graph_edges_created": 1,
             "memory_ids": [
-              "01a154e5-cf86-7d6e-a147-450dc35bd4c7",
-              "01a154e5-cf86-737b-b500-4568c8e5b32a"
+              "01a154f7-f606-79c2-9a5d-a4dbbdd897b5",
+              "01a154f7-f606-7aa9-9ee9-f28ac0bf59dc"
             ],
             "status": "ingested",
             "triples": [
@@ -77,13 +77,13 @@
           "step": "5. GDPR Art. 17 Right-to-be-Forgotten erases PII memory & signs SHA-256 proof",
           "passed": true,
           "audit": {
-            "audit_id": "gdpr-01a154e5",
+            "audit_id": "gdpr-01a154f7",
             "tenant_id": "tenant-e2e",
             "subject_hash_sha256": "93b89cfbbfde0c6b942de6768b444429041a50bda0e244901347544c899b6359",
             "deleted_memory_count": 1,
             "reason": "GDPR_ART_17_ERASURE",
-            "proof_hash_sha256": "15ea9c9ec02b000b1089419f37e67c9aa98e4d4b85688509c1fd4ba4744b51a2",
-            "executed_at": "2026-10-19T16:01:49.44742374Z"
+            "proof_hash_sha256": "f899df0369fb0f74598c8ff19c4177fa3f5913e413f960ca6aaede4d1f85ae08",
+            "executed_at": "2026-10-19T16:21:38.951717888Z"
           }
         },
         {

@@ -1,6 +1,9 @@
 package parity
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestBuildParityRegistryAndDomainExecution(t *testing.T) {
 	reg := BuildParityRegistry()
@@ -9,18 +12,24 @@ func TestBuildParityRegistryAndDomainExecution(t *testing.T) {
 	}
 
 	fs := NewAbstractFusionStrategy()
-	rec := fs.Fuse("dense", "sparse")
-	if rec.Status != "OK" || rec.Class != "AbstractFusionStrategy" {
-		t.Fatalf("unexpected AbstractFusionStrategy execution record: %+v", rec)
+	rec1 := fs.Fuse("dense", "sparse")
+	rec2 := fs.Fuse("dense", "graph")
+	if !strings.HasPrefix(rec1.Status, "EXECUTED_") || rec1.Class != "AbstractFusionStrategy" {
+		t.Fatalf("unexpected AbstractFusionStrategy execution record: %+v", rec1)
+	}
+	if rec1.Digest == rec2.Digest {
+		t.Fatalf("expected input-sensitive digests to differ for different arguments")
 	}
 
 	ab := NewABTestRepository()
-	if ab.CreateTest("exp-1").Status != "OK" || ab.CalculateStatistics("exp-1").Status != "OK" {
-		t.Fatalf("expected ABTestRepository methods OK")
+	if !strings.HasPrefix(ab.CreateTest("exp-1").Status, "EXECUTED_") || !strings.HasPrefix(ab.CalculateStatistics("exp-1").Status, "EXECUTED_") {
+		t.Fatalf("expected ABTestRepository methods EXECUTED")
 	}
 
-	fnRes := ActivateEdge("node-a", "node-b")
-	if fnRes["status"] != "OK" {
-		t.Fatalf("expected ActivateEdge status OK, got %+v", fnRes)
+	fnRes1 := ActivateEdge("node-a", "node-b")
+	fnRes2 := ActivateEdge("node-a", "node-c")
+	st, _ := fnRes1["status"].(string)
+	if !strings.HasPrefix(st, "EXECUTED_") || fnRes1["digest"] == fnRes2["digest"] {
+		t.Fatalf("expected input-sensitive ActivateEdge status EXECUTED, got %+v", fnRes1)
 	}
 }

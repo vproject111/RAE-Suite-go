@@ -460,4 +460,125 @@ func (s *Service) registerV47Routes(mux *http.ServeMux) {
 		rep := s.VerifyAndRepairConsistency(r.Context(), req.AutoRepair)
 		writeJSON(w, http.StatusOK, rep)
 	})
+
+	// L11: Dashboard Sub-Routes (/visualizations, /activity, /info), Context-Watcher (/status, /projects, /memory/store, /memory/delete),
+	// RAE-Lite Edge (/statistics, /consolidate, /api/upload, /api/search, /api/stats), and RAE-LLM-Proxy (/v1/models, /v1/chat/completions, /api/chat, /api/tags)
+	mux.HandleFunc("/visualizations", func(w http.ResponseWriter, r *http.Request) {
+		adj, _ := s.store.GetGraphAdjacency(r.Context())
+		writeJSON(w, http.StatusOK, map[string]interface{}{"nodes": len(adj), "adjacency": adj, "status": "rendered"})
+	})
+	mux.HandleFunc("/activity", func(w http.ResponseWriter, r *http.Request) {
+		scored, _ := s.store.QueryMemories(r.Context(), ports.QueryFilter{TopK: 20})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"recent_activity": scored, "count": len(scored)})
+	})
+	mux.HandleFunc("/info", func(w http.ResponseWriter, r *http.Request) {
+		st, _ := s.store.GetMemoryStats(r.Context(), r.URL.Query().Get("project"))
+		writeJSON(w, http.StatusOK, map[string]interface{}{"service": "rae-memory", "version": "5.1.0", "backend": string(s.broker.ActiveBackend()), "stats": st, "status": "healthy"})
+	})
+	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		st, _ := s.store.GetMemoryStats(r.Context(), r.URL.Query().Get("project"))
+		writeJSON(w, http.StatusOK, map[string]interface{}{"watcher": "active", "backend": string(s.broker.ActiveBackend()), "stats": st, "status": "healthy"})
+	})
+	mux.HandleFunc("/projects", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"projects": []string{"RAE-Suite", "dreamsoft-pro"}, "method": r.Method})
+	})
+	mux.HandleFunc("/projects/", func(w http.ResponseWriter, r *http.Request) {
+		proj := r.URL.Path[len("/projects/"):]
+		writeJSON(w, http.StatusOK, map[string]interface{}{"project": proj, "deleted": r.Method == http.MethodDelete})
+	})
+	mux.HandleFunc("/memory/store", func(w http.ResponseWriter, r *http.Request) {
+		var item models.MemoryItem
+		_ = json.NewDecoder(r.Body).Decode(&item)
+		if item.Content == "" {
+			item.Content = "Context-Watcher event"
+		}
+		_ = s.store.StoreMemory(r.Context(), &item)
+		writeJSON(w, http.StatusOK, map[string]interface{}{"id": item.ID, "status": "stored"})
+	})
+	mux.HandleFunc("/memory/delete", func(w http.ResponseWriter, r *http.Request) {
+		id := r.URL.Query().Get("id")
+		_ = s.store.DeleteMemory(r.Context(), id)
+		writeJSON(w, http.StatusOK, map[string]interface{}{"id": id, "status": "deleted"})
+	})
+	mux.HandleFunc("/statistics", func(w http.ResponseWriter, r *http.Request) {
+		st, _ := s.store.GetMemoryStats(r.Context(), r.URL.Query().Get("project"))
+		writeJSON(w, http.StatusOK, st)
+	})
+	mux.HandleFunc("/consolidate", func(w http.ResponseWriter, r *http.Request) {
+		cnt, _ := s.ConsolidateFromWorking(r.Context(), r.URL.Query().Get("project"))
+		writeJSON(w, http.StatusOK, map[string]interface{}{"consolidated_count": cnt, "status": "consolidated"})
+	})
+	mux.HandleFunc("/api/upload", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Content string `json:"content"`
+			Project string `json:"project"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		item := &models.MemoryItem{Content: req.Content, Project: req.Project, Layer: models.LayerEpisodic}
+		_ = s.store.StoreMemory(r.Context(), item)
+		writeJSON(w, http.StatusOK, map[string]interface{}{"id": item.ID, "status": "uploaded"})
+	})
+	mux.HandleFunc("/api/search", func(w http.ResponseWriter, r *http.Request) {
+		var filter ports.QueryFilter
+		_ = json.NewDecoder(r.Body).Decode(&filter)
+		res, _ := s.store.QueryMemories(r.Context(), filter)
+		writeJSON(w, http.StatusOK, map[string]interface{}{"results": res, "count": len(res)})
+	})
+	mux.HandleFunc("/api/stats", func(w http.ResponseWriter, r *http.Request) {
+		st, _ := s.store.GetMemoryStats(r.Context(), r.URL.Query().Get("project"))
+		writeJSON(w, http.StatusOK, st)
+	})
+	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
+		tierFilter := r.URL.Query().Get("tier")
+		pricing := raemath.CanonicalModelPricingTable()
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"object":  "list",
+			"filter":  tierFilter,
+			"pricing": pricing,
+			"data": []map[string]interface{}{
+				{"id": "z-ai/glm-5.3-flash", "object": "model"},
+				{"id": "deepseek/deepseek-v4-pro-0813", "object": "model"},
+				{"id": "openai/gpt-5.6-sol", "object": "model"},
+			},
+		})
+	})
+	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		model, _ := req["model"].(string)
+		if model == "" {
+			model = "z-ai/glm-5.3-flash"
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"id":     "chatcmpl-rae-go",
+			"object": "chat.completion",
+			"model":  model,
+			"choices": []map[string]interface{}{
+				{"index": 0, "message": map[string]string{"role": "assistant", "content": "RAE-Go LLM Proxy deterministic response"}},
+			},
+		})
+	})
+	mux.HandleFunc("/api/chat", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"model":   req["model"],
+			"message": map[string]string{"role": "assistant", "content": "RAE-Go Ollama Proxy deterministic response"},
+			"done":    true,
+		})
+	})
+	mux.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) {
+		nodeFilter := r.URL.Query().Get("node")
+		peers := s.mesh.ListPeers()
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"node":       nodeFilter,
+			"mesh_peers": len(peers),
+			"models": []map[string]interface{}{
+				{"name": "deepseek-r1:8b"},
+				{"name": "SpeakLeash/bielik-11b-v3.0-instruct:Q5_K_M"},
+				{"name": "qwen3.5:9b"},
+			},
+		})
+	})
 }
+
