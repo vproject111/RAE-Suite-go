@@ -269,10 +269,11 @@ func (s *Service) StartBackgroundWorkers(ctx context.Context, interval time.Dura
 func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 	s.RegisterExtendedRoutes(mux)
 	s.registerV45Routes(mux)
+	s.registerV46Routes(mux)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"status":          "healthy",
-			"version":         "4.5.0",
+			"version":         "4.6.0",
 			"storage_backend": string(s.broker.ActiveBackend()),
 			"layers":          models.AllMemoryLayers(),
 		})
