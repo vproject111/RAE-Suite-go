@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/vproject111/RAE-Suite-go/pkg/drivers/memorystore"
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/accounting"
 	raemath "github.com/vproject111/RAE-Suite-go/pkg/raecore/math"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/models"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/security"
@@ -26,6 +28,11 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "record-task" {
+		runRecordTaskCLI(os.Args[2:])
+		return
+	}
+
 	allFlag := flag.Bool("all", true, "Run all 9 RAE-Suite & RAE-CRL modules concurrently in one binary")
 	modulesFlag := flag.String("modules", "memory,crl,mcp,suite,quality,lab,phoenix,hive,portal", "Comma-separated list of modules to run")
 	profileFlag := flag.String("profile", "edge", "Storage & execution profile: edge | cluster | hybrid")
@@ -58,7 +65,7 @@ func main() {
 		}
 	}
 
-	fmt.Printf("RAE-Go v4.1 Unified Runner (profile=%s, active_modules=%d, port_offset=%d)\n", *profileFlag, len(active), *portOffsetFlag)
+	fmt.Printf("RAE-Go v4.3 Unified Runner (profile=%s, active_modules=%d, port_offset=%d)\n", *profileFlag, len(active), *portOffsetFlag)
 	if *dryRunFlag {
 		return
 	}
@@ -111,4 +118,40 @@ func main() {
 	}
 
 	wg.Wait()
+}
+
+func runRecordTaskCLI(args []string) {
+	fs := flag.NewFlagSet("record-task", flag.ExitOnError)
+	task := fs.String("task", "", "CO zrobiono (What was done)")
+	rationale := fs.String("rationale", "", "DLACZEGO / uzasadnienie architektoniczne (Why)")
+	effect := fs.String("effect", "", "EFEKT / wynik i status testów (Impact & Tests)")
+	model := fs.String("model", "gemini-2.5-pro", "KTO / jaki model wykonał zadanie (Who)")
+	project := fs.String("project", "RAE-Suite-go", "Docelowy projekt w RAE")
+	cost := fs.Float64("cost", 0.0, "ZA ILE / koszt w USD")
+	latency := fs.Float64("latency-ms", 12.5, "ILE TRWAŁO / czas w ms")
+	_ = fs.Parse(args)
+
+	if strings.TrimSpace(*task) == "" || strings.TrimSpace(*rationale) == "" || strings.TrimSpace(*effect) == "" {
+		log.Fatalf("record-task requires --task, --rationale, and --effect")
+	}
+
+	ledger := accounting.NewExecutionAuditLedger("", 0)
+	receipt := ledger.RecordInvocation(
+		*model,
+		"local_first",
+		"grzegorz@cloud",
+		*task,
+		*rationale,
+		"APPROVED",
+		500,
+		250,
+		*cost,
+		*latency,
+		*effect,
+		0,
+	)
+	fivePillar := accounting.BuildFivePillarMemory(receipt, *project)
+	fmt.Printf("✅ [RAE-Go Audit Ledger] Zapisano 5-filarowy paragon zadania (ReceiptID=%s)\n", receipt.ReceiptID)
+	fmt.Printf("🔒 [SHA-256 Chain] Hash=%s (Prev=%s)\n", receipt.CryptographicHash, receipt.PreviousHash)
+	fmt.Println(fivePillar.Content)
 }
