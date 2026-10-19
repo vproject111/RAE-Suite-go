@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/vproject111/RAE-Suite-go/pkg/drivers/agnostic"
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/graph"
+	raemath "github.com/vproject111/RAE-Suite-go/pkg/raecore/math"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/models"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/ports"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/reflection"
@@ -21,15 +23,19 @@ import (
 // Service implements Module 3: RAE-Memory (8 Storage Layers, L1-L4 Reflection,
 // 9 Search Strategies, Procedural Oracle, Sycon Knowledge Resolve, OutboxDispatcher, AgnosticStorageBroker & RAE-Mesh).
 type Service struct {
-	store     ports.MemoryStoragePort
-	broker    *agnostic.AgnosticStorageBroker
-	outbox    ports.OutboxQueuePort
-	reflector *reflection.Coordinator
-	gateway   *search.LogicGateway
-	mesh      *raemesh.MeshEngine
-	guard     *security.HardFramesGuard
-	scrubber  *workflows.IngestionPIIScrubber
-	scheduler *BackgroundScheduler
+	store         ports.MemoryStoragePort
+	broker        *agnostic.AgnosticStorageBroker
+	outbox        ports.OutboxQueuePort
+	mathCtrl      *raemath.MathController
+	ibSelector    *raemath.InformationBottleneckSelector
+	temporalGraph *graph.TemporalGraphService
+	provenanceSvc *security.ContextProvenanceService
+	reflector     *reflection.Coordinator
+	gateway       *search.LogicGateway
+	mesh          *raemesh.MeshEngine
+	guard         *security.HardFramesGuard
+	scrubber      *workflows.IngestionPIIScrubber
+	scheduler     *BackgroundScheduler
 }
 
 // NewService constructs a full 8-layer database-agnostic RAE-Memory Service.
@@ -37,17 +43,22 @@ func NewService(store ports.MemoryStoragePort, outbox ports.OutboxQueuePort, gua
 	if guard == nil {
 		guard = security.NewHardFramesGuard("")
 	}
+	mc := raemath.NewMathController(models.MathL3)
 	broker := agnostic.NewAgnosticStorageBroker(store)
 	return &Service{
-		store:     broker,
-		broker:    broker,
-		outbox:    outbox,
-		reflector: reflection.NewCoordinator(),
-		gateway:   search.NewLogicGateway(nil),
-		mesh:      raemesh.NewMeshEngine(broker, guard),
-		guard:     guard,
-		scrubber:  workflows.NewIngestionPIIScrubber(),
-		scheduler: &BackgroundScheduler{Running: true, IntervalSec: 60, LastRunAt: time.Now().UTC()},
+		store:         broker,
+		broker:        broker,
+		outbox:        outbox,
+		mathCtrl:      mc,
+		ibSelector:    raemath.NewInformationBottleneckSelector(0.45),
+		temporalGraph: graph.NewTemporalGraphService(),
+		provenanceSvc: security.NewContextProvenanceService(),
+		reflector:     reflection.NewCoordinator(),
+		gateway:       search.NewLogicGateway(mc),
+		mesh:          raemesh.NewMeshEngine(broker, guard),
+		guard:         guard,
+		scrubber:      workflows.NewIngestionPIIScrubber(),
+		scheduler:     &BackgroundScheduler{Running: true, IntervalSec: 60, LastRunAt: time.Now().UTC()},
 	}
 }
 

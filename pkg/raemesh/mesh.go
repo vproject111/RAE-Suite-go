@@ -50,6 +50,7 @@ type MeshEngine struct {
 	peers  map[string]Peer
 	store  ports.MemoryStoragePort
 	guard  *security.HardFramesGuard
+	crypto *E2EEncryption
 	client *http.Client
 }
 
@@ -62,6 +63,7 @@ func NewMeshEngine(store ports.MemoryStoragePort, guard *security.HardFramesGuar
 		peers:  make(map[string]Peer),
 		store:  store,
 		guard:  guard,
+		crypto: NewE2EEncryption(""),
 		client: &http.Client{Timeout: 350 * time.Millisecond},
 	}
 	m.RegisterPeer(Peer{
@@ -93,6 +95,20 @@ func NewMeshEngine(store ports.MemoryStoragePort, guard *security.HardFramesGuar
 		Status:    "active",
 	})
 	return m
+}
+
+// Crypto returns the E2EEncryption engine attached to this MeshEngine.
+func (m *MeshEngine) Crypto() *E2EEncryption {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.crypto
+}
+
+// SetEncryptionPassword updates the PBKDF2-AES-256-GCM key used for E2E Mesh transfers.
+func (m *MeshEngine) SetEncryptionPassword(password string) {
+	m.mu.Lock()
+	m.crypto = NewE2EEncryption(password)
+	m.mu.Unlock()
 }
 
 // SetStorage hot-swaps the underlying database-agnostic storage port used by RAE-Mesh.
@@ -185,7 +201,7 @@ func ResolveCRDTLWW(existing, incoming models.MemoryItem) models.MemoryItem {
 	return existing
 }
 
-// ReceiveMemories implements the CMT (Consensual Memory Transfer) receiver protocol with CRDT LWW resolution.
+// ReceiveMemories implements the CMT (Consensual Memory Transfer) receiver protocol with E2E decryption and CRDT LWW resolution.
 func (m *MeshEngine) ReceiveMemories(ctx context.Context, token string, items []models.MemoryItem) (int, int, error) {
 	peerID, err := m.VerifyCapabilityToken(token, "mesh:write")
 	if err != nil {
@@ -193,11 +209,20 @@ func (m *MeshEngine) ReceiveMemories(ctx context.Context, token string, items []
 	}
 	m.mu.RLock()
 	store := m.store
+	crypto := m.crypto
 	m.mu.RUnlock()
 
 	accepted, rejected := 0, 0
 	for i := range items {
 		item := items[i]
+		if item.IsEncrypted && len(item.EncryptedBytes) > 0 && crypto != nil {
+			if dec, err := crypto.DecryptMemory(item); err == nil {
+				item = dec
+			} else {
+				rejected++
+				continue
+			}
+		}
 		if err := m.guard.ValidateMeshTransfer(item); err != nil {
 			rejected++
 			continue
