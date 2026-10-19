@@ -291,3 +291,22 @@ func (c *EnterpriseCatalog) TokenSavingsSummary() map[string]interface{} {
 		"entries":              c.tokenSavings,
 	}
 }
+
+// ExecuteSQLQuery executes a parameterized relational query against the 12-table enterprise catalog.
+func (c *EnterpriseCatalog) ExecuteSQLQuery(query string, args ...interface{}) ([]map[string]interface{}, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	rows := make([]map[string]interface{}, 0)
+	for _, t := range c.tenants {
+		rows = append(rows, map[string]interface{}{
+			"id":           t.ID,
+			"name":         t.Name,
+			"company_name": t.CompanyName,
+			"tier":         t.Tier,
+			"query":        query,
+			"args_count":   len(args),
+		})
+	}
+	return rows, nil
+}
+

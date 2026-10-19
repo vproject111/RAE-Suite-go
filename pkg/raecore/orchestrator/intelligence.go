@@ -8,13 +8,45 @@ import (
 	"time"
 )
 
-// ModelRouter implements orchestrator/core/model_router.py.
-type ModelRouter struct{}
+// ModelRouter implements orchestrator/core/model_router.py & core/model_router.py.
+type ModelRouter struct {
+	DefaultTier string
+}
+
+func NewModelRouter() *ModelRouter { return &ModelRouter{DefaultTier: "tier1"} }
+
+func (mr *ModelRouter) ChoosePlanner(complexity string) string {
+	return (&ModelRouterV2{}).ChoosePlanner(complexity)
+}
+func (mr *ModelRouter) ChoosePlanReviewer(complexity string) string {
+	return (&ModelRouterV2{}).ChoosePlanReviewer(complexity)
+}
+func (mr *ModelRouter) ChooseImplementer(complexity string) string {
+	return (&ModelRouterV2{}).ChooseImplementer(complexity)
+}
+func (mr *ModelRouter) ChooseCodeReviewer(complexity string) string {
+	return (&ModelRouterV2{}).ChooseCodeReviewer(complexity)
+}
+func (mr *ModelRouter) EstimateTaskCost(tokens int, tier string) float64 {
+	return (&ModelRouterV2{}).EstimateTaskCost(tokens, tier)
+}
+func (mr *ModelRouter) CalculateEstimatedCost(tokens int, tier string) float64 {
+	return mr.EstimateTaskCost(tokens, tier)
+}
+func (mr *ModelRouter) RouteTask(complexity string) string {
+	return mr.ChooseImplementer(complexity)
+}
+func (mr *ModelRouter) GetTribunalQuorumModels() []string {
+	return []string{"openai/gpt-5.6-sol", "moonshotai/kimi-k3", "anthropic/claude-sonnet-5"}
+}
 
 // ModelRouterV2 implements orchestrator/core/model_router_v2.py.
-type ModelRouterV2 struct{}
+type ModelRouterV2 struct {
+	DefaultTier string
+}
 
-func NewModelRouterV2() *ModelRouterV2 { return &ModelRouterV2{} }
+func NewModelRouterV2() *ModelRouterV2 { return &ModelRouterV2{DefaultTier: "tier1"} }
+
 
 func (mr *ModelRouterV2) ChoosePlanner(complexity string) string {
 	if strings.EqualFold(complexity, "high") || strings.EqualFold(complexity, "critical") {
