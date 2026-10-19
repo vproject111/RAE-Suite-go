@@ -76,3 +76,16 @@ Jednak szczegółowa inspekcja katalogów `/home/grzegorz/cloud/RAE-Suite/core/`
 - Rozbudowa skryptu `/home/grzegorz/cloud/RAE-Suite-go/scripts/verify_python_vs_go_parity.py` o bezpośrednie testy porównawcze wszystkich nowych silników (`ExecutionAuditLedger`, `BatchOptimizationEngine`, `ExecutionReceipt`, `CognitivePlanner`, `ContextBroker`, `DynamicCouncil`, `SwarmConsensus`, `SagaCoordinator`, `StreamingComposer`, `ClaimCheck`, `SafeReplay`, `A2AProtocol`, `PIIScrubber`, `ShadowEvaluator`, `ThinDeviceRuntime`).
 - Wygenerowanie raportu końcowego `/home/grzegorz/cloud/RAE-Suite-go/docs/RAPORT_POROWNANIA_I_PARZYSTOSCI_PYTHON_VS_GO.md`.
 - Kompilacja wszystkich 10 binarek natywnych + 4 cross-platform, merge do `develop` i `main`, otagowanie `v4.3.0` i wypchnięcie na GitHub.
+
+---
+
+## 3. Status Realizacji Planu: 100% ZREALIZOWANO (`v4.3.0`)
+
+| Iteracja | Gałąź Git Flow | Zakres i wdrożone silniki | Status Testów (`go test`, `-race`, Live HTTP) |
+| :--- | :--- | :--- | :---: |
+| **Iteracja C1** | `feature/c1-audit-accounting-and-receipts` | `pkg/raecore/accounting`: `ExecutionAuditLedger` (**KTO, CO, DLACZEGO, ZA ILE, ILE TRWAŁO, JAKI EFEKT**), łańcuch SHA-256, rotacja `.jsonl.gz`, `BuildFivePillarMemory`, `ExecutionReceipt` (`Zero Fake Success`), `VerifyReceiptChain`, `MinimumAuditableEvent` (MAES v1.0), `AnalyzeProject` (`ProjectPhaseAnalyzer`) | **PASS (100%)** |
+| **Iteracja C2** | `feature/c2-batch-engine-and-context-economy` | `pkg/raecore/economy`: `BatchOptimizationEngine` (grupowanie po module + **Efekt Skali Wiedzy / Knowledge Scale Effect** po wspólnym pliku `target_file`, amortyzacja `15 000` tokenów dla `warm_agents`), `ContextBroker` (`DetermineRetrievalDepth`, `PruneContext`), `ContextTrustEvaluator`, `HardenedSemanticCache` (Singleflight + TTL Jitter $\pm 15\%$) | **PASS (100%)** |
+| **Iteracja C3** | `feature/c3-cognitive-planner-and-swarm-consensus` | `pkg/raecore/cognition`: `CognitivePlanner` (ToT + MCTS UCT + PRM, `R0=10..R6=250` + mnożnik `1.5×`), `DynamicCouncilSelector` (optymalizacja Pareto dla Tier 1/2/3), `SwarmConsensusEngine` (głosowanie ważone + prawo **VETO** `rae-quality`) | **PASS (100%)** |
+| **Iteracja C4** | `feature/c4-saga-streaming-a2a-and-autonomy` | `pkg/raecore/workflows`: `SagaCoordinator`, `StreamingFunctionComposer`, `SpeculativeToolExecutor` (`k<=3`), `ClaimCheckManager` (`>16 KiB` SHA-256 blob), `SafeReplayEngine`, `A2AProtocolAdapter` (`HS256`/`RS256` + nonce anti-replay), `IngestionPIIScrubber`, `ShadowEvaluator` ($\ge 72\text{h}$), `CuriosityEngine`, `ToolForge`, `ThinDeviceRuntime` | **PASS (100%)** |
+| **Iteracja C5** | `feature/c5-api-and-cli-wiring` | Podłączenie wszystkich 26 nowych endpointów do `services/orchestrator` (`:8009`) oraz `services/memory` (`:8000`) i subkomendy `./bin/rae record-task` w CLI | **PASS (100%)** |
+| **Iteracja C6** | `feature/c6-verification-and-release-v4.3.0` | Rozbudowa `scripts/verify_python_vs_go_parity.py` do **159 punktów kontrolnych na żywo** (`159/159 PASS` w Go przy średniej latencji `0.44 ms` vs `106.17 ms` w Pythonie — **243.8× szybciej**), aktualizacja raportu i wydanie `v4.3.0` | **PASS (159/159)** |
