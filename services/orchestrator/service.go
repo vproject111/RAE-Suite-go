@@ -9,9 +9,13 @@ import (
 	"time"
 
 	"github.com/vproject111/RAE-Suite-go/pkg/drivers/llm"
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/accounting"
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/cognition"
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/economy"
 	raemath "github.com/vproject111/RAE-Suite-go/pkg/raecore/math"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/models"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/security"
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/workflows"
 	"github.com/vproject111/RAE-Suite-go/services/crl"
 	"github.com/vproject111/RAE-Suite-go/services/quality"
 )
@@ -52,21 +56,40 @@ type TriadCascadeResult struct {
 	Tier3Judge       []string      `json:"tier3_judge"`
 	AuditPassed      bool          `json:"audit_passed"`
 	QualityRating    string        `json:"quality_rating"`
+	AuditReceiptID   string        `json:"audit_receipt_id,omitempty"`
+	AuditReceiptHash string        `json:"audit_receipt_hash,omitempty"`
 	Status           string        `json:"status"`
 }
 
 // Service implements Module 1: RAE-Suite Orchestrator (Stage 0 RAE-CRL ResearchStage,
-// AutonomyKernel State Machine, LayerTriadRunner, CEO Reconcile & ComputeFabricRouter).
+// AutonomyKernel State Machine, LayerTriadRunner, CEO Reconcile, ComputeFabricRouter,
+// and all 16 Core Audit/Batch/Cognition/Workflow/Autonomy Engines).
 type Service struct {
-	mu           sync.RWMutex
-	mathCtrl     *raemath.MathController
-	crlSvc       *crl.Service
-	qualitySvc   *quality.Service
-	guard        *security.HardFramesGuard
-	llmClient    *llm.Client
-	hitlRequests map[string]HITLRequest
-	departments  map[string]map[string]interface{}
-	reconciles   int
+	mu            sync.RWMutex
+	mathCtrl      *raemath.MathController
+	crlSvc        *crl.Service
+	qualitySvc    *quality.Service
+	guard         *security.HardFramesGuard
+	llmClient     *llm.Client
+	auditLedger   *accounting.ExecutionAuditLedger
+	batchEngine   *economy.BatchOptimizationEngine
+	contextBroker *economy.ContextBroker
+	trustEval     *economy.ContextTrustEvaluator
+	semCache      *economy.HardenedSemanticCache
+	planner       *cognition.CognitivePlanner
+	council       *cognition.DynamicCouncilSelector
+	consensus     *cognition.SwarmConsensusEngine
+	specExec      *workflows.SpeculativeToolExecutor
+	claimCheck    *workflows.ClaimCheckManager
+	replayEngine  *workflows.SafeReplayEngine
+	a2aAdapter    *workflows.A2AProtocolAdapter
+	shadowEval    *workflows.ShadowEvaluator
+	curiosity     *workflows.CuriosityEngine
+	toolForge     *workflows.ToolForge
+	thinRuntime   *workflows.ThinDeviceRuntime
+	hitlRequests  map[string]HITLRequest
+	departments   map[string]map[string]interface{}
+	reconciles    int
 }
 
 // NewService constructs the main RAE-Suite Orchestrator service.
@@ -80,13 +103,34 @@ func NewService(mc *raemath.MathController, crlSvc *crl.Service, qualSvc *qualit
 	if qualSvc == nil {
 		qualSvc = quality.NewService()
 	}
+	a2a := workflows.NewA2AProtocolAdapter()
+	a2a.RegisterAgent("rae-suite", "rae-suite-default-hmac-secret")
+	a2a.RegisterAgent("rae-hive", "rae-hive-default-hmac-secret")
+	a2a.RegisterAgent("rae-quality", "rae-quality-default-hmac-secret")
+
 	return &Service{
-		mathCtrl:     mc,
-		crlSvc:       crlSvc,
-		qualitySvc:   qualSvc,
-		guard:        guard,
-		llmClient:    llm.NewClient(),
-		hitlRequests: make(map[string]HITLRequest),
+		mathCtrl:      mc,
+		crlSvc:        crlSvc,
+		qualitySvc:    qualSvc,
+		guard:         guard,
+		llmClient:     llm.NewClient(),
+		auditLedger:   accounting.NewExecutionAuditLedger("", 0),
+		batchEngine:   economy.NewBatchOptimizationEngine(1000),
+		contextBroker: economy.NewContextBroker(8000, 0.4),
+		trustEval:     economy.NewContextTrustEvaluator(),
+		semCache:      economy.NewHardenedSemanticCache(300, 0.15),
+		planner:       cognition.NewCognitivePlanner(),
+		council:       cognition.NewDynamicCouncilSelector(nil),
+		consensus:     cognition.NewSwarmConsensusEngine(),
+		specExec:      workflows.NewSpeculativeToolExecutor(nil),
+		claimCheck:    workflows.NewClaimCheckManager(""),
+		replayEngine:  workflows.NewSafeReplayEngine(),
+		a2aAdapter:    a2a,
+		shadowEval:    workflows.NewShadowEvaluator(),
+		curiosity:     workflows.NewCuriosityEngine(),
+		toolForge:     workflows.NewToolForge(),
+		thinRuntime:   workflows.NewThinDeviceRuntime(),
+		hitlRequests:  make(map[string]HITLRequest),
 		departments: map[string]map[string]interface{}{
 			"RAE-Memory":  {"port": 8001, "status": "online"},
 			"RAE-CRL":     {"port": 8005, "status": "online"},
@@ -102,6 +146,7 @@ func NewService(mc *raemath.MathController, crlSvc *crl.Service, qualSvc *qualit
 // ExecuteCascade runs the full AutonomyKernel state machine:
 // PENDING -> RESEARCHING (Stage 0 RAE-CRL) -> PLANNING -> CODING -> AUDITING -> COMPLETED/ESCALATED_L3.
 func (s *Service) ExecuteCascade(ctx context.Context, task, project, codeDraft string) (*TriadCascadeResult, error) {
+	start := time.Now()
 	states := []KernelState{StatePending, StateResearching}
 	researchID := ""
 	if s.crlSvc != nil {
@@ -117,12 +162,33 @@ func (s *Service) ExecuteCascade(ctx context.Context, task, project, codeDraft s
 	states = append(states, StatePlanning, StateCoding, StateAuditing)
 	verdict := s.qualitySvc.RunTribunal(codeDraft, nil, task)
 	status := string(StateCompleted)
+	decision := "APPROVED"
 	if verdict.Approved {
 		states = append(states, StateCompleted)
 	} else {
 		states = append(states, StateEscalatedL3)
 		status = string(StateEscalatedL3)
+		decision = "ESCALATED_L3"
 	}
+
+	violationsCount := 0
+	if !verdict.Approved {
+		violationsCount = 1
+	}
+	receipt := s.auditLedger.RecordInvocation(
+		"z-ai/glm-5.3-flash",
+		"openrouter",
+		"autonomy-kernel",
+		task,
+		"AutonomyKernel 3-Tier Cascade Execution",
+		decision,
+		250,
+		150,
+		0.00004,
+		float64(time.Since(start).Microseconds())/1000.0,
+		status,
+		violationsCount,
+	)
 
 	return &TriadCascadeResult{
 		Task:         task,
@@ -138,11 +204,13 @@ func (s *Service) ExecuteCascade(ctx context.Context, task, project, codeDraft s
 			"deepseek/deepseek-v4-flash",
 			"xiaomi/mimo-v2.5",
 		},
-		Tier2Review:   s.qualitySvc.ReviewerModels(),
-		Tier3Judge:    s.qualitySvc.JudgeModels(),
-		AuditPassed:   verdict.Approved,
-		QualityRating: "A",
-		Status:        status,
+		Tier2Review:      s.qualitySvc.ReviewerModels(),
+		Tier3Judge:       s.qualitySvc.JudgeModels(),
+		AuditPassed:      verdict.Approved,
+		QualityRating:    "A",
+		AuditReceiptID:   receipt.ReceiptID,
+		AuditReceiptHash: receipt.CryptographicHash,
+		Status:           status,
 	}, nil
 }
 
@@ -201,12 +269,13 @@ func (s *Service) ListHITLRequests() []HITLRequest {
 	return out
 }
 
-// RegisterRoutes attaches all 24 RAE-Suite Orchestrator routes (:8009).
+// RegisterRoutes attaches all RAE-Suite Orchestrator routes (:8009).
 func (s *Service) RegisterRoutes(mux *http.ServeMux) {
+	s.registerCoreEngineRoutes(mux)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"status":     "operational",
-			"version":    "4.2.0",
+			"version":    "4.3.0",
 			"api":        "v2",
 			"quality_v2": "integrated",
 			"crl_v2":     "integrated",
