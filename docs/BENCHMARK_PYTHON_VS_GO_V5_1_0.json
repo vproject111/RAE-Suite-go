@@ -1,0 +1,27 @@
+{
+  "l1_l3_scoring_10k_iters": {
+    "python_ms": 7.191,
+    "go_ms": 3.526,
+    "speedup_x": 2.04
+  },
+  "cosine_similarity_384d_5k_iters": {
+    "python_ms": 212.716,
+    "go_ms": 1.831,
+    "speedup_x": 116.18
+  },
+  "merkle_tree_sync_50x1000_items": {
+    "python_ms": 43.589,
+    "go_ms": 27.974,
+    "speedup_x": 1.56
+  },
+  "http_health_100_requests": {
+    "python_ms": 595.144,
+    "go_ms": 12.857,
+    "speedup_x": 46.29
+  },
+  "ingest_1000_memories_in_ram": {
+    "python_ms": 1.264,
+    "go_ms": 1.23,
+    "speedup_x": 1.03
+  }
+}

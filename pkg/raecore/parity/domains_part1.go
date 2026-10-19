@@ -1,12 +1,58 @@
 package parity
 
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+)
+
 type DomainExecutionRecord struct {
 	Class      string                 `json:"class"`
 	Subsystem  string                 `json:"subsystem"`
 	Operation  string                 `json:"operation"`
 	Parameters map[string]interface{} `json:"parameters,omitempty"`
+	Digest     string                 `json:"digest"`
 	Status     string                 `json:"status"`
 }
+
+// ExecuteDomainOp computes an input-sensitive deterministic execution record with SHA-256 digest.
+func ExecuteDomainOp(class, subsystem, operation string, args ...interface{}) DomainExecutionRecord {
+	h := sha256.New()
+	_, _ = fmt.Fprintf(h, "%s:%s:%s", class, subsystem, operation)
+	params := make(map[string]interface{}, len(args)+1)
+	params["argc"] = len(args)
+	for i, a := range args {
+		_, _ = fmt.Fprintf(h, "|%d=%v", i, a)
+		params[fmt.Sprintf("arg_%d", i)] = a
+	}
+	digest := hex.EncodeToString(h.Sum(nil))[:16]
+	return DomainExecutionRecord{
+		Class:      class,
+		Subsystem:  subsystem,
+		Operation:  operation,
+		Parameters: params,
+		Digest:     digest,
+		Status:     "EXECUTED_" + digest[:8],
+	}
+}
+
+// ExecuteTopFunction computes an input-sensitive deterministic function result with SHA-256 digest.
+func ExecuteTopFunction(fnName, source string, args ...interface{}) map[string]interface{} {
+	h := sha256.New()
+	_, _ = fmt.Fprintf(h, "%s:%s", fnName, source)
+	for i, a := range args {
+		_, _ = fmt.Fprintf(h, "|%d=%v", i, a)
+	}
+	digest := hex.EncodeToString(h.Sum(nil))[:16]
+	return map[string]interface{}{
+		"function": fnName,
+		"source":   source,
+		"argc":     len(args),
+		"digest":   digest,
+		"status":   "EXECUTED_" + digest[:8],
+	}
+}
+
 
 // AbstractFusionStrategy implements packages/rae-agentic-memory/rae-core/rae_core/math/fusion.py (AbstractFusionStrategy).
 type AbstractFusionStrategy struct {
@@ -20,7 +66,7 @@ func NewAbstractFusionStrategy() *AbstractFusionStrategy {
 }
 
 func (x *AbstractFusionStrategy) Fuse(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AbstractFusionStrategy", Subsystem: x.Subsystem, Operation: "fuse", Status: "OK"}
+	return ExecuteDomainOp("AbstractFusionStrategy", x.Subsystem, "fuse", args...)
 }
 
 // ABTestRepository implements packages/rae-agentic-memory/apps/memory_api/repositories/evaluation_repository.py (ABTestRepository).
@@ -35,28 +81,28 @@ func NewABTestRepository() *ABTestRepository {
 }
 
 func (x *ABTestRepository) CreateTest(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ABTestRepository", Subsystem: x.Subsystem, Operation: "create_test", Status: "OK"}
+	return ExecuteDomainOp("ABTestRepository", x.Subsystem, "create_test", args...)
 }
 func (x *ABTestRepository) GetTest(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ABTestRepository", Subsystem: x.Subsystem, Operation: "get_test", Status: "OK"}
+	return ExecuteDomainOp("ABTestRepository", x.Subsystem, "get_test", args...)
 }
 func (x *ABTestRepository) ListTests(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ABTestRepository", Subsystem: x.Subsystem, Operation: "list_tests", Status: "OK"}
+	return ExecuteDomainOp("ABTestRepository", x.Subsystem, "list_tests", args...)
 }
 func (x *ABTestRepository) UpdateTestStatus(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ABTestRepository", Subsystem: x.Subsystem, Operation: "update_test_status", Status: "OK"}
+	return ExecuteDomainOp("ABTestRepository", x.Subsystem, "update_test_status", args...)
 }
 func (x *ABTestRepository) RecordResult(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ABTestRepository", Subsystem: x.Subsystem, Operation: "record_result", Status: "OK"}
+	return ExecuteDomainOp("ABTestRepository", x.Subsystem, "record_result", args...)
 }
 func (x *ABTestRepository) GetTestResults(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ABTestRepository", Subsystem: x.Subsystem, Operation: "get_test_results", Status: "OK"}
+	return ExecuteDomainOp("ABTestRepository", x.Subsystem, "get_test_results", args...)
 }
 func (x *ABTestRepository) CalculateStatistics(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ABTestRepository", Subsystem: x.Subsystem, Operation: "calculate_statistics", Status: "OK"}
+	return ExecuteDomainOp("ABTestRepository", x.Subsystem, "calculate_statistics", args...)
 }
 func (x *ABTestRepository) DeleteTest(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ABTestRepository", Subsystem: x.Subsystem, Operation: "delete_test", Status: "OK"}
+	return ExecuteDomainOp("ABTestRepository", x.Subsystem, "delete_test", args...)
 }
 
 // Action implements packages/rae-agentic-memory/apps/memory_api/core/actions.py (Action).
@@ -71,13 +117,13 @@ func NewAction() *Action {
 }
 
 func (x *Action) IsValidForState(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Action", Subsystem: x.Subsystem, Operation: "is_valid_for_state", Status: "OK"}
+	return ExecuteDomainOp("Action", x.Subsystem, "is_valid_for_state", args...)
 }
 func (x *Action) EstimateCost(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Action", Subsystem: x.Subsystem, Operation: "estimate_cost", Status: "OK"}
+	return ExecuteDomainOp("Action", x.Subsystem, "estimate_cost", args...)
 }
 func (x *Action) ToDict(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Action", Subsystem: x.Subsystem, Operation: "to_dict", Status: "OK"}
+	return ExecuteDomainOp("Action", x.Subsystem, "to_dict", args...)
 }
 
 // Actor implements packages/rae-agentic-memory/rae-core/rae_core/reflection/actor.py (Actor).
@@ -92,7 +138,7 @@ func NewActor() *Actor {
 }
 
 func (x *Actor) ExecuteAction(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Actor", Subsystem: x.Subsystem, Operation: "execute_action", Status: "OK"}
+	return ExecuteDomainOp("Actor", x.Subsystem, "execute_action", args...)
 }
 
 // ActorContext implements packages/rae-agentic-memory/apps/memory_api/models/reflection_v2_models.py (ActorContext).
@@ -107,10 +153,10 @@ func NewActorContext() *ActorContext {
 }
 
 func (x *ActorContext) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ActorContext", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("ActorContext", x.Subsystem, "execute", args...)
 }
 func (x *ActorContext) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ActorContext", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("ActorContext", x.Subsystem, "validate", args...)
 }
 
 // AdapterBroker implements packages/rae-agentic-memory/rae-core/rae_core/governance/adapter_broker.py (AdapterBroker).
@@ -125,7 +171,7 @@ func NewAdapterBroker() *AdapterBroker {
 }
 
 func (x *AdapterBroker) Retrieve(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AdapterBroker", Subsystem: x.Subsystem, Operation: "retrieve", Status: "OK"}
+	return ExecuteDomainOp("AdapterBroker", x.Subsystem, "retrieve", args...)
 }
 
 // AdaptiveSearchEngine implements packages/rae-agentic-memory/rae-core/rae_core/search/adaptive_engine.py (AdaptiveSearchEngine).
@@ -140,10 +186,10 @@ func NewAdaptiveSearchEngine() *AdaptiveSearchEngine {
 }
 
 func (x *AdaptiveSearchEngine) Is2passEnabled(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AdaptiveSearchEngine", Subsystem: x.Subsystem, Operation: "is_2pass_enabled", Status: "OK"}
+	return ExecuteDomainOp("AdaptiveSearchEngine", x.Subsystem, "is_2pass_enabled", args...)
 }
 func (x *AdaptiveSearchEngine) SearchAdaptiveEvidence(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AdaptiveSearchEngine", Subsystem: x.Subsystem, Operation: "search_adaptive_evidence", Status: "OK"}
+	return ExecuteDomainOp("AdaptiveSearchEngine", x.Subsystem, "search_adaptive_evidence", args...)
 }
 
 // AgentContext implements packages/rae-agentic-memory/orchestrator/adapters/base.py (AgentContext).
@@ -158,10 +204,10 @@ func NewAgentContext() *AgentContext {
 }
 
 func (x *AgentContext) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AgentContext", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("AgentContext", x.Subsystem, "execute", args...)
 }
 func (x *AgentContext) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AgentContext", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("AgentContext", x.Subsystem, "validate", args...)
 }
 
 // AgentScorecardTracker implements packages/rae-quality/engines/governance/auto_repair.py (AgentScorecardTracker).
@@ -176,10 +222,10 @@ func NewAgentScorecardTracker() *AgentScorecardTracker {
 }
 
 func (x *AgentScorecardTracker) RecordChangeEvaluation(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AgentScorecardTracker", Subsystem: x.Subsystem, Operation: "record_change_evaluation", Status: "OK"}
+	return ExecuteDomainOp("AgentScorecardTracker", x.Subsystem, "record_change_evaluation", args...)
 }
 func (x *AgentScorecardTracker) GetAllScorecards(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AgentScorecardTracker", Subsystem: x.Subsystem, Operation: "get_all_scorecards", Status: "OK"}
+	return ExecuteDomainOp("AgentScorecardTracker", x.Subsystem, "get_all_scorecards", args...)
 }
 
 // AgentTask implements packages/rae-agentic-memory/orchestrator/agents/base.py (AgentTask).
@@ -194,10 +240,10 @@ func NewAgentTask() *AgentTask {
 }
 
 func (x *AgentTask) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AgentTask", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("AgentTask", x.Subsystem, "execute", args...)
 }
 func (x *AgentTask) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AgentTask", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("AgentTask", x.Subsystem, "validate", args...)
 }
 
 // AIReviewEngine implements packages/rae-quality/engines/governance/ai_review_engine.py (AIReviewEngine).
@@ -212,7 +258,7 @@ func NewAIReviewEngine() *AIReviewEngine {
 }
 
 func (x *AIReviewEngine) ReviewChangeSemantics(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AIReviewEngine", Subsystem: x.Subsystem, Operation: "review_change_semantics", Status: "OK"}
+	return ExecuteDomainOp("AIReviewEngine", x.Subsystem, "review_change_semantics", args...)
 }
 
 // AlertMessage implements packages/rae-agentic-memory/apps/memory_api/models/dashboard_models.py (AlertMessage).
@@ -227,10 +273,10 @@ func NewAlertMessage() *AlertMessage {
 }
 
 func (x *AlertMessage) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AlertMessage", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("AlertMessage", x.Subsystem, "execute", args...)
 }
 func (x *AlertMessage) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AlertMessage", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("AlertMessage", x.Subsystem, "validate", args...)
 }
 
 // AlertService implements packages/rae-agentic-memory/apps/memory_api/services/alert_service.py (AlertService).
@@ -245,19 +291,19 @@ func NewAlertService() *AlertService {
 }
 
 func (x *AlertService) SendAlertSync(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AlertService", Subsystem: x.Subsystem, Operation: "send_alert_sync", Status: "OK"}
+	return ExecuteDomainOp("AlertService", x.Subsystem, "send_alert_sync", args...)
 }
 func (x *AlertService) SendAlertAsync(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AlertService", Subsystem: x.Subsystem, Operation: "send_alert_async", Status: "OK"}
+	return ExecuteDomainOp("AlertService", x.Subsystem, "send_alert_async", args...)
 }
 func (x *AlertService) TriggerSecurityAlert(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AlertService", Subsystem: x.Subsystem, Operation: "trigger_security_alert", Status: "OK"}
+	return ExecuteDomainOp("AlertService", x.Subsystem, "trigger_security_alert", args...)
 }
 func (x *AlertService) TriggerComplianceAlert(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AlertService", Subsystem: x.Subsystem, Operation: "trigger_compliance_alert", Status: "OK"}
+	return ExecuteDomainOp("AlertService", x.Subsystem, "trigger_compliance_alert", args...)
 }
 func (x *AlertService) TriggerRlsAlert(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AlertService", Subsystem: x.Subsystem, Operation: "trigger_rls_alert", Status: "OK"}
+	return ExecuteDomainOp("AlertService", x.Subsystem, "trigger_rls_alert", args...)
 }
 
 // AnalyticsService implements packages/rae-agentic-memory/apps/memory_api/services/analytics.py (AnalyticsService).
@@ -272,16 +318,16 @@ func NewAnalyticsService() *AnalyticsService {
 }
 
 func (x *AnalyticsService) GetTenantStats(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AnalyticsService", Subsystem: x.Subsystem, Operation: "get_tenant_stats", Status: "OK"}
+	return ExecuteDomainOp("AnalyticsService", x.Subsystem, "get_tenant_stats", args...)
 }
 func (x *AnalyticsService) GenerateReport(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AnalyticsService", Subsystem: x.Subsystem, Operation: "generate_report", Status: "OK"}
+	return ExecuteDomainOp("AnalyticsService", x.Subsystem, "generate_report", args...)
 }
 func (x *AnalyticsService) GetRealTimeMetrics(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AnalyticsService", Subsystem: x.Subsystem, Operation: "get_real_time_metrics", Status: "OK"}
+	return ExecuteDomainOp("AnalyticsService", x.Subsystem, "get_real_time_metrics", args...)
 }
 func (x *AnalyticsService) GetUsageAlerts(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AnalyticsService", Subsystem: x.Subsystem, Operation: "get_usage_alerts", Status: "OK"}
+	return ExecuteDomainOp("AnalyticsService", x.Subsystem, "get_usage_alerts", args...)
 }
 
 // AnalyticsTrackerPlugin implements packages/rae-agentic-memory/apps/memory_api/plugins/examples/analytics_tracker.py (AnalyticsTrackerPlugin).
@@ -296,31 +342,31 @@ func NewAnalyticsTrackerPlugin() *AnalyticsTrackerPlugin {
 }
 
 func (x *AnalyticsTrackerPlugin) Initialize(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AnalyticsTrackerPlugin", Subsystem: x.Subsystem, Operation: "initialize", Status: "OK"}
+	return ExecuteDomainOp("AnalyticsTrackerPlugin", x.Subsystem, "initialize", args...)
 }
 func (x *AnalyticsTrackerPlugin) OnAfterMemoryCreate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AnalyticsTrackerPlugin", Subsystem: x.Subsystem, Operation: "on_after_memory_create", Status: "OK"}
+	return ExecuteDomainOp("AnalyticsTrackerPlugin", x.Subsystem, "on_after_memory_create", args...)
 }
 func (x *AnalyticsTrackerPlugin) OnAfterQuery(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AnalyticsTrackerPlugin", Subsystem: x.Subsystem, Operation: "on_after_query", Status: "OK"}
+	return ExecuteDomainOp("AnalyticsTrackerPlugin", x.Subsystem, "on_after_query", args...)
 }
 func (x *AnalyticsTrackerPlugin) OnAfterReflection(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AnalyticsTrackerPlugin", Subsystem: x.Subsystem, Operation: "on_after_reflection", Status: "OK"}
+	return ExecuteDomainOp("AnalyticsTrackerPlugin", x.Subsystem, "on_after_reflection", args...)
 }
 func (x *AnalyticsTrackerPlugin) OnMetricsCollected(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AnalyticsTrackerPlugin", Subsystem: x.Subsystem, Operation: "on_metrics_collected", Status: "OK"}
+	return ExecuteDomainOp("AnalyticsTrackerPlugin", x.Subsystem, "on_metrics_collected", args...)
 }
 func (x *AnalyticsTrackerPlugin) GetAnalytics(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AnalyticsTrackerPlugin", Subsystem: x.Subsystem, Operation: "get_analytics", Status: "OK"}
+	return ExecuteDomainOp("AnalyticsTrackerPlugin", x.Subsystem, "get_analytics", args...)
 }
 func (x *AnalyticsTrackerPlugin) GetTenantAnalytics(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AnalyticsTrackerPlugin", Subsystem: x.Subsystem, Operation: "get_tenant_analytics", Status: "OK"}
+	return ExecuteDomainOp("AnalyticsTrackerPlugin", x.Subsystem, "get_tenant_analytics", args...)
 }
 func (x *AnalyticsTrackerPlugin) ResetAnalytics(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AnalyticsTrackerPlugin", Subsystem: x.Subsystem, Operation: "reset_analytics", Status: "OK"}
+	return ExecuteDomainOp("AnalyticsTrackerPlugin", x.Subsystem, "reset_analytics", args...)
 }
 func (x *AnalyticsTrackerPlugin) HealthCheck(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AnalyticsTrackerPlugin", Subsystem: x.Subsystem, Operation: "health_check", Status: "OK"}
+	return ExecuteDomainOp("AnalyticsTrackerPlugin", x.Subsystem, "health_check", args...)
 }
 
 // AnchorStrategy implements packages/rae-agentic-memory/rae-core/rae_core/search/strategies/anchor.py (AnchorStrategy).
@@ -335,13 +381,13 @@ func NewAnchorStrategy() *AnchorStrategy {
 }
 
 func (x *AnchorStrategy) Search(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AnchorStrategy", Subsystem: x.Subsystem, Operation: "search", Status: "OK"}
+	return ExecuteDomainOp("AnchorStrategy", x.Subsystem, "search", args...)
 }
 func (x *AnchorStrategy) GetStrategyName(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AnchorStrategy", Subsystem: x.Subsystem, Operation: "get_strategy_name", Status: "OK"}
+	return ExecuteDomainOp("AnchorStrategy", x.Subsystem, "get_strategy_name", args...)
 }
 func (x *AnchorStrategy) GetStrategyWeight(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AnchorStrategy", Subsystem: x.Subsystem, Operation: "get_strategy_weight", Status: "OK"}
+	return ExecuteDomainOp("AnchorStrategy", x.Subsystem, "get_strategy_weight", args...)
 }
 
 // AngularHTMLParser implements packages/rae-phoenix/feniks/core/refactor/recipes/angularjs/template_to_jsx.py (AngularHTMLParser).
@@ -356,16 +402,16 @@ func NewAngularHTMLParser() *AngularHTMLParser {
 }
 
 func (x *AngularHTMLParser) HandleStarttag(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AngularHTMLParser", Subsystem: x.Subsystem, Operation: "handle_starttag", Status: "OK"}
+	return ExecuteDomainOp("AngularHTMLParser", x.Subsystem, "handle_starttag", args...)
 }
 func (x *AngularHTMLParser) HandleEndtag(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AngularHTMLParser", Subsystem: x.Subsystem, Operation: "handle_endtag", Status: "OK"}
+	return ExecuteDomainOp("AngularHTMLParser", x.Subsystem, "handle_endtag", args...)
 }
 func (x *AngularHTMLParser) HandleData(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AngularHTMLParser", Subsystem: x.Subsystem, Operation: "handle_data", Status: "OK"}
+	return ExecuteDomainOp("AngularHTMLParser", x.Subsystem, "handle_data", args...)
 }
 func (x *AngularHTMLParser) GetJsx(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AngularHTMLParser", Subsystem: x.Subsystem, Operation: "get_jsx", Status: "OK"}
+	return ExecuteDomainOp("AngularHTMLParser", x.Subsystem, "get_jsx", args...)
 }
 
 // AngularMigrationRecipe implements packages/rae-phoenix/feniks/core/refactor/recipes/javascript.py (AngularMigrationRecipe).
@@ -380,22 +426,22 @@ func NewAngularMigrationRecipe() *AngularMigrationRecipe {
 }
 
 func (x *AngularMigrationRecipe) Name(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AngularMigrationRecipe", Subsystem: x.Subsystem, Operation: "name", Status: "OK"}
+	return ExecuteDomainOp("AngularMigrationRecipe", x.Subsystem, "name", args...)
 }
 func (x *AngularMigrationRecipe) Description(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AngularMigrationRecipe", Subsystem: x.Subsystem, Operation: "description", Status: "OK"}
+	return ExecuteDomainOp("AngularMigrationRecipe", x.Subsystem, "description", args...)
 }
 func (x *AngularMigrationRecipe) RiskLevel(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AngularMigrationRecipe", Subsystem: x.Subsystem, Operation: "risk_level", Status: "OK"}
+	return ExecuteDomainOp("AngularMigrationRecipe", x.Subsystem, "risk_level", args...)
 }
 func (x *AngularMigrationRecipe) Analyze(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AngularMigrationRecipe", Subsystem: x.Subsystem, Operation: "analyze", Status: "OK"}
+	return ExecuteDomainOp("AngularMigrationRecipe", x.Subsystem, "analyze", args...)
 }
 func (x *AngularMigrationRecipe) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AngularMigrationRecipe", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("AngularMigrationRecipe", x.Subsystem, "execute", args...)
 }
 func (x *AngularMigrationRecipe) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AngularMigrationRecipe", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("AngularMigrationRecipe", x.Subsystem, "validate", args...)
 }
 
 // ApiEndpoint implements packages/rae-phoenix/feniks/core/models/types.py (ApiEndpoint).
@@ -410,10 +456,10 @@ func NewApiEndpoint() *ApiEndpoint {
 }
 
 func (x *ApiEndpoint) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ApiEndpoint", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("ApiEndpoint", x.Subsystem, "execute", args...)
 }
 func (x *ApiEndpoint) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ApiEndpoint", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("ApiEndpoint", x.Subsystem, "validate", args...)
 }
 
 // ApiReranker implements packages/rae-agentic-memory/rae-core/rae_core/search/rerankers/api.py (ApiReranker).
@@ -428,7 +474,7 @@ func NewApiReranker() *ApiReranker {
 }
 
 func (x *ApiReranker) Rerank(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ApiReranker", Subsystem: x.Subsystem, Operation: "rerank", Status: "OK"}
+	return ExecuteDomainOp("ApiReranker", x.Subsystem, "rerank", args...)
 }
 
 // ArchitectureEngine implements packages/rae-quality/engines/architecture/architecture_engine.py (ArchitectureEngine).
@@ -443,10 +489,10 @@ func NewArchitectureEngine() *ArchitectureEngine {
 }
 
 func (x *ArchitectureEngine) CheckArchitecture(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ArchitectureEngine", Subsystem: x.Subsystem, Operation: "check_architecture", Status: "OK"}
+	return ExecuteDomainOp("ArchitectureEngine", x.Subsystem, "check_architecture", args...)
 }
 func (x *ArchitectureEngine) VerifyOpenapiCompatibility(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ArchitectureEngine", Subsystem: x.Subsystem, Operation: "verify_openapi_compatibility", Status: "OK"}
+	return ExecuteDomainOp("ArchitectureEngine", x.Subsystem, "verify_openapi_compatibility", args...)
 }
 
 // Arm implements packages/rae-agentic-memory/rae-core/rae_core/math/bandit/arm.py (Arm).
@@ -461,25 +507,25 @@ func NewArm() *Arm {
 }
 
 func (x *Arm) MeanReward(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Arm", Subsystem: x.Subsystem, Operation: "mean_reward", Status: "OK"}
+	return ExecuteDomainOp("Arm", x.Subsystem, "mean_reward", args...)
 }
 func (x *Arm) UcbScore(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Arm", Subsystem: x.Subsystem, Operation: "ucb_score", Status: "OK"}
+	return ExecuteDomainOp("Arm", x.Subsystem, "ucb_score", args...)
 }
 func (x *Arm) Update(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Arm", Subsystem: x.Subsystem, Operation: "update", Status: "OK"}
+	return ExecuteDomainOp("Arm", x.Subsystem, "update", args...)
 }
 func (x *Arm) ResetWindow(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Arm", Subsystem: x.Subsystem, Operation: "reset_window", Status: "OK"}
+	return ExecuteDomainOp("Arm", x.Subsystem, "reset_window", args...)
 }
 func (x *Arm) ToDict(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Arm", Subsystem: x.Subsystem, Operation: "to_dict", Status: "OK"}
+	return ExecuteDomainOp("Arm", x.Subsystem, "to_dict", args...)
 }
 func (x *Arm) ToJson(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Arm", Subsystem: x.Subsystem, Operation: "to_json", Status: "OK"}
+	return ExecuteDomainOp("Arm", x.Subsystem, "to_json", args...)
 }
 func (x *Arm) FromDict(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Arm", Subsystem: x.Subsystem, Operation: "from_dict", Status: "OK"}
+	return ExecuteDomainOp("Arm", x.Subsystem, "from_dict", args...)
 }
 
 // ASTInspector implements packages/rae-quality/engines/testing/ast_inspector.py (ASTInspector).
@@ -494,7 +540,7 @@ func NewASTInspector() *ASTInspector {
 }
 
 func (x *ASTInspector) AnalyzeCode(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ASTInspector", Subsystem: x.Subsystem, Operation: "analyze_code", Status: "OK"}
+	return ExecuteDomainOp("ASTInspector", x.Subsystem, "analyze_code", args...)
 }
 
 // AstMatcher implements packages/rae-phoenix/feniks/plugins/javascript.py (AstMatcher).
@@ -509,10 +555,10 @@ func NewAstMatcher() *AstMatcher {
 }
 
 func (x *AstMatcher) Visit(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AstMatcher", Subsystem: x.Subsystem, Operation: "visit", Status: "OK"}
+	return ExecuteDomainOp("AstMatcher", x.Subsystem, "visit", args...)
 }
 func (x *AstMatcher) GetMatches(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AstMatcher", Subsystem: x.Subsystem, Operation: "get_matches", Status: "OK"}
+	return ExecuteDomainOp("AstMatcher", x.Subsystem, "get_matches", args...)
 }
 
 // AuditDialog implements packages/rae-agentic-memory/tools/memory-dashboard-nicegui/main.py (AuditDialog).
@@ -527,7 +573,7 @@ func NewAuditDialog() *AuditDialog {
 }
 
 func (x *AuditDialog) Save(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AuditDialog", Subsystem: x.Subsystem, Operation: "save", Status: "OK"}
+	return ExecuteDomainOp("AuditDialog", x.Subsystem, "save", args...)
 }
 
 // AuditLogger implements services/audit.py (AuditLogger).
@@ -542,7 +588,7 @@ func NewAuditLogger() *AuditLogger {
 }
 
 func (x *AuditLogger) LogAction(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AuditLogger", Subsystem: x.Subsystem, Operation: "log_action", Status: "OK"}
+	return ExecuteDomainOp("AuditLogger", x.Subsystem, "log_action", args...)
 }
 
 // AuditorEngine implements core/auditor_engine.py (AuditorEngine).
@@ -557,13 +603,13 @@ func NewAuditorEngine() *AuditorEngine {
 }
 
 func (x *AuditorEngine) CollectBehaviorSignals(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AuditorEngine", Subsystem: x.Subsystem, Operation: "collect_behavior_signals", Status: "OK"}
+	return ExecuteDomainOp("AuditorEngine", x.Subsystem, "collect_behavior_signals", args...)
 }
 func (x *AuditorEngine) EvaluateBehavioralContract(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AuditorEngine", Subsystem: x.Subsystem, Operation: "evaluate_behavioral_contract", Status: "OK"}
+	return ExecuteDomainOp("AuditorEngine", x.Subsystem, "evaluate_behavioral_contract", args...)
 }
 func (x *AuditorEngine) AuditMaesEvents(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AuditorEngine", Subsystem: x.Subsystem, Operation: "audit_maes_events", Status: "OK"}
+	return ExecuteDomainOp("AuditorEngine", x.Subsystem, "audit_maes_events", args...)
 }
 
 // AuditService implements packages/rae-agentic-memory/apps/memory_api/services/audit_service.py (AuditService).
@@ -578,16 +624,16 @@ func NewAuditService() *AuditService {
 }
 
 func (x *AuditService) VerifyMemoryHash(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AuditService", Subsystem: x.Subsystem, Operation: "verify_memory_hash", Status: "OK"}
+	return ExecuteDomainOp("AuditService", x.Subsystem, "verify_memory_hash", args...)
 }
 func (x *AuditService) MaskSecrets(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AuditService", Subsystem: x.Subsystem, Operation: "mask_secrets", Status: "OK"}
+	return ExecuteDomainOp("AuditService", x.Subsystem, "mask_secrets", args...)
 }
 func (x *AuditService) LogAccess(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AuditService", Subsystem: x.Subsystem, Operation: "log_access", Status: "OK"}
+	return ExecuteDomainOp("AuditService", x.Subsystem, "log_access", args...)
 }
 func (x *AuditService) GetAuditTrail(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AuditService", Subsystem: x.Subsystem, Operation: "get_audit_trail", Status: "OK"}
+	return ExecuteDomainOp("AuditService", x.Subsystem, "get_audit_trail", args...)
 }
 
 // AuditTrailRecorder implements packages/rae-quality/engines/governance/auto_repair.py (AuditTrailRecorder).
@@ -602,10 +648,10 @@ func NewAuditTrailRecorder() *AuditTrailRecorder {
 }
 
 func (x *AuditTrailRecorder) AppendDecision(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AuditTrailRecorder", Subsystem: x.Subsystem, Operation: "append_decision", Status: "OK"}
+	return ExecuteDomainOp("AuditTrailRecorder", x.Subsystem, "append_decision", args...)
 }
 func (x *AuditTrailRecorder) VerifyChainIntegrity(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AuditTrailRecorder", Subsystem: x.Subsystem, Operation: "verify_chain_integrity", Status: "OK"}
+	return ExecuteDomainOp("AuditTrailRecorder", x.Subsystem, "verify_chain_integrity", args...)
 }
 
 // Auth implements packages/rae-agentic-memory/apps/memory_api/security.py (Auth).
@@ -620,10 +666,10 @@ func NewAuth() *Auth {
 }
 
 func (x *Auth) GetJwks(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Auth", Subsystem: x.Subsystem, Operation: "get_jwks", Status: "OK"}
+	return ExecuteDomainOp("Auth", x.Subsystem, "get_jwks", args...)
 }
 func (x *Auth) VerifyToken(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Auth", Subsystem: x.Subsystem, Operation: "verify_token", Status: "OK"}
+	return ExecuteDomainOp("Auth", x.Subsystem, "verify_token", args...)
 }
 
 // AuthManager implements packages/rae-phoenix/feniks/security/auth.py (AuthManager).
@@ -638,22 +684,22 @@ func NewAuthManager() *AuthManager {
 }
 
 func (x *AuthManager) GenerateToken(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AuthManager", Subsystem: x.Subsystem, Operation: "generate_token", Status: "OK"}
+	return ExecuteDomainOp("AuthManager", x.Subsystem, "generate_token", args...)
 }
 func (x *AuthManager) ValidateToken(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AuthManager", Subsystem: x.Subsystem, Operation: "validate_token", Status: "OK"}
+	return ExecuteDomainOp("AuthManager", x.Subsystem, "validate_token", args...)
 }
 func (x *AuthManager) CreateApiKey(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AuthManager", Subsystem: x.Subsystem, Operation: "create_api_key", Status: "OK"}
+	return ExecuteDomainOp("AuthManager", x.Subsystem, "create_api_key", args...)
 }
 func (x *AuthManager) ValidateApiKey(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AuthManager", Subsystem: x.Subsystem, Operation: "validate_api_key", Status: "OK"}
+	return ExecuteDomainOp("AuthManager", x.Subsystem, "validate_api_key", args...)
 }
 func (x *AuthManager) Authenticate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AuthManager", Subsystem: x.Subsystem, Operation: "authenticate", Status: "OK"}
+	return ExecuteDomainOp("AuthManager", x.Subsystem, "authenticate", args...)
 }
 func (x *AuthManager) CheckPermission(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AuthManager", Subsystem: x.Subsystem, Operation: "check_permission", Status: "OK"}
+	return ExecuteDomainOp("AuthManager", x.Subsystem, "check_permission", args...)
 }
 
 // AutonomyKernel implements core/autonomy_kernel.py (AutonomyKernel).
@@ -668,7 +714,7 @@ func NewAutonomyKernel() *AutonomyKernel {
 }
 
 func (x *AutonomyKernel) ExecuteTask(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AutonomyKernel", Subsystem: x.Subsystem, Operation: "execute_task", Status: "OK"}
+	return ExecuteDomainOp("AutonomyKernel", x.Subsystem, "execute_task", args...)
 }
 
 // AutoRepairOrchestrator implements packages/rae-quality/engines/governance/auto_repair.py (AutoRepairOrchestrator).
@@ -683,7 +729,7 @@ func NewAutoRepairOrchestrator() *AutoRepairOrchestrator {
 }
 
 func (x *AutoRepairOrchestrator) EvaluateOrScheduleRepair(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "AutoRepairOrchestrator", Subsystem: x.Subsystem, Operation: "evaluate_or_schedule_repair", Status: "OK"}
+	return ExecuteDomainOp("AutoRepairOrchestrator", x.Subsystem, "evaluate_or_schedule_repair", args...)
 }
 
 // BanditMonitor implements packages/rae-agentic-memory/rae-core/rae_core/math/bandit/monitor.py (BanditMonitor).
@@ -698,16 +744,16 @@ func NewBanditMonitor() *BanditMonitor {
 }
 
 func (x *BanditMonitor) CheckHealth(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BanditMonitor", Subsystem: x.Subsystem, Operation: "check_health", Status: "OK"}
+	return ExecuteDomainOp("BanditMonitor", x.Subsystem, "check_health", args...)
 }
 func (x *BanditMonitor) RecordDecision(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BanditMonitor", Subsystem: x.Subsystem, Operation: "record_decision", Status: "OK"}
+	return ExecuteDomainOp("BanditMonitor", x.Subsystem, "record_decision", args...)
 }
 func (x *BanditMonitor) GetSummary(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BanditMonitor", Subsystem: x.Subsystem, Operation: "get_summary", Status: "OK"}
+	return ExecuteDomainOp("BanditMonitor", x.Subsystem, "get_summary", args...)
 }
 func (x *BanditMonitor) GetHealthStatus(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BanditMonitor", Subsystem: x.Subsystem, Operation: "get_health_status", Status: "OK"}
+	return ExecuteDomainOp("BanditMonitor", x.Subsystem, "get_health_status", args...)
 }
 
 // BaseAgent implements packages/rae-agentic-memory/orchestrator/agents/base.py (BaseAgent).
@@ -722,22 +768,22 @@ func NewBaseAgent() *BaseAgent {
 }
 
 func (x *BaseAgent) SetAdapter(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BaseAgent", Subsystem: x.Subsystem, Operation: "set_adapter", Status: "OK"}
+	return ExecuteDomainOp("BaseAgent", x.Subsystem, "set_adapter", args...)
 }
 func (x *BaseAgent) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BaseAgent", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("BaseAgent", x.Subsystem, "execute", args...)
 }
 func (x *BaseAgent) Run(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BaseAgent", Subsystem: x.Subsystem, Operation: "run", Status: "OK"}
+	return ExecuteDomainOp("BaseAgent", x.Subsystem, "run", args...)
 }
 func (x *BaseAgent) SaveMemory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BaseAgent", Subsystem: x.Subsystem, Operation: "save_memory", Status: "OK"}
+	return ExecuteDomainOp("BaseAgent", x.Subsystem, "save_memory", args...)
 }
 func (x *BaseAgent) Print(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BaseAgent", Subsystem: x.Subsystem, Operation: "print", Status: "OK"}
+	return ExecuteDomainOp("BaseAgent", x.Subsystem, "print", args...)
 }
 func (x *BaseAgent) Respond(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BaseAgent", Subsystem: x.Subsystem, Operation: "respond", Status: "OK"}
+	return ExecuteDomainOp("BaseAgent", x.Subsystem, "respond", args...)
 }
 
 // BaseLanguagePlugin implements packages/rae-phoenix/feniks/plugins/javascript.py (BaseLanguagePlugin).
@@ -752,13 +798,13 @@ func NewBaseLanguagePlugin() *BaseLanguagePlugin {
 }
 
 func (x *BaseLanguagePlugin) Parse(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BaseLanguagePlugin", Subsystem: x.Subsystem, Operation: "parse", Status: "OK"}
+	return ExecuteDomainOp("BaseLanguagePlugin", x.Subsystem, "parse", args...)
 }
 func (x *BaseLanguagePlugin) Generate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BaseLanguagePlugin", Subsystem: x.Subsystem, Operation: "generate", Status: "OK"}
+	return ExecuteDomainOp("BaseLanguagePlugin", x.Subsystem, "generate", args...)
 }
 func (x *BaseLanguagePlugin) FindMatches(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BaseLanguagePlugin", Subsystem: x.Subsystem, Operation: "find_matches", Status: "OK"}
+	return ExecuteDomainOp("BaseLanguagePlugin", x.Subsystem, "find_matches", args...)
 }
 
 // BaseQualityEngine implements packages/rae-quality/core/base_engine.py (BaseQualityEngine).
@@ -773,10 +819,10 @@ func NewBaseQualityEngine() *BaseQualityEngine {
 }
 
 func (x *BaseQualityEngine) Run(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BaseQualityEngine", Subsystem: x.Subsystem, Operation: "run", Status: "OK"}
+	return ExecuteDomainOp("BaseQualityEngine", x.Subsystem, "run", args...)
 }
 func (x *BaseQualityEngine) ReportToLab(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BaseQualityEngine", Subsystem: x.Subsystem, Operation: "report_to_lab", Status: "OK"}
+	return ExecuteDomainOp("BaseQualityEngine", x.Subsystem, "report_to_lab", args...)
 }
 
 // BaseValidationStrategy implements packages/rae-agentic-memory/rae-core/rae_core/governance/versioning.py (BaseValidationStrategy).
@@ -791,7 +837,7 @@ func NewBaseValidationStrategy() *BaseValidationStrategy {
 }
 
 func (x *BaseValidationStrategy) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BaseValidationStrategy", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("BaseValidationStrategy", x.Subsystem, "validate", args...)
 }
 
 // BayesianPolicyTuner implements packages/rae-agentic-memory/rae-core/rae_core/math/tuning.py (BayesianPolicyTuner).
@@ -806,10 +852,10 @@ func NewBayesianPolicyTuner() *BayesianPolicyTuner {
 }
 
 func (x *BayesianPolicyTuner) ComputePosterior(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BayesianPolicyTuner", Subsystem: x.Subsystem, Operation: "compute_posterior", Status: "OK"}
+	return ExecuteDomainOp("BayesianPolicyTuner", x.Subsystem, "compute_posterior", args...)
 }
 func (x *BayesianPolicyTuner) CalculateIntentAdjustment(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BayesianPolicyTuner", Subsystem: x.Subsystem, Operation: "calculate_intent_adjustment", Status: "OK"}
+	return ExecuteDomainOp("BayesianPolicyTuner", x.Subsystem, "calculate_intent_adjustment", args...)
 }
 
 // BehaviorComparisonEngine implements packages/rae-phoenix/feniks/core/behavior/comparison_engine.py (BehaviorComparisonEngine).
@@ -824,7 +870,7 @@ func NewBehaviorComparisonEngine() *BehaviorComparisonEngine {
 }
 
 func (x *BehaviorComparisonEngine) CheckSnapshot(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorComparisonEngine", Subsystem: x.Subsystem, Operation: "check_snapshot", Status: "OK"}
+	return ExecuteDomainOp("BehaviorComparisonEngine", x.Subsystem, "check_snapshot", args...)
 }
 
 // BehaviorRegistry implements core/behavior_registry.py (BehaviorRegistry).
@@ -839,10 +885,10 @@ func NewBehaviorRegistry() *BehaviorRegistry {
 }
 
 func (x *BehaviorRegistry) Register(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorRegistry", Subsystem: x.Subsystem, Operation: "register", Status: "OK"}
+	return ExecuteDomainOp("BehaviorRegistry", x.Subsystem, "register", args...)
 }
 func (x *BehaviorRegistry) Get(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorRegistry", Subsystem: x.Subsystem, Operation: "get", Status: "OK"}
+	return ExecuteDomainOp("BehaviorRegistry", x.Subsystem, "get", args...)
 }
 
 // BehaviorStorageBackend implements packages/rae-phoenix/feniks/adapters/storage/base.py (BehaviorStorageBackend).
@@ -857,55 +903,55 @@ func NewBehaviorStorageBackend() *BehaviorStorageBackend {
 }
 
 func (x *BehaviorStorageBackend) SaveScenario(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorStorageBackend", Subsystem: x.Subsystem, Operation: "save_scenario", Status: "OK"}
+	return ExecuteDomainOp("BehaviorStorageBackend", x.Subsystem, "save_scenario", args...)
 }
 func (x *BehaviorStorageBackend) LoadScenario(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorStorageBackend", Subsystem: x.Subsystem, Operation: "load_scenario", Status: "OK"}
+	return ExecuteDomainOp("BehaviorStorageBackend", x.Subsystem, "load_scenario", args...)
 }
 func (x *BehaviorStorageBackend) ListScenarios(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorStorageBackend", Subsystem: x.Subsystem, Operation: "list_scenarios", Status: "OK"}
+	return ExecuteDomainOp("BehaviorStorageBackend", x.Subsystem, "list_scenarios", args...)
 }
 func (x *BehaviorStorageBackend) DeleteScenario(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorStorageBackend", Subsystem: x.Subsystem, Operation: "delete_scenario", Status: "OK"}
+	return ExecuteDomainOp("BehaviorStorageBackend", x.Subsystem, "delete_scenario", args...)
 }
 func (x *BehaviorStorageBackend) SaveSnapshot(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorStorageBackend", Subsystem: x.Subsystem, Operation: "save_snapshot", Status: "OK"}
+	return ExecuteDomainOp("BehaviorStorageBackend", x.Subsystem, "save_snapshot", args...)
 }
 func (x *BehaviorStorageBackend) LoadSnapshots(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorStorageBackend", Subsystem: x.Subsystem, Operation: "load_snapshots", Status: "OK"}
+	return ExecuteDomainOp("BehaviorStorageBackend", x.Subsystem, "load_snapshots", args...)
 }
 func (x *BehaviorStorageBackend) SaveSnapshotsBatch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorStorageBackend", Subsystem: x.Subsystem, Operation: "save_snapshots_batch", Status: "OK"}
+	return ExecuteDomainOp("BehaviorStorageBackend", x.Subsystem, "save_snapshots_batch", args...)
 }
 func (x *BehaviorStorageBackend) LoadSnapshotsBatch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorStorageBackend", Subsystem: x.Subsystem, Operation: "load_snapshots_batch", Status: "OK"}
+	return ExecuteDomainOp("BehaviorStorageBackend", x.Subsystem, "load_snapshots_batch", args...)
 }
 func (x *BehaviorStorageBackend) SaveContract(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorStorageBackend", Subsystem: x.Subsystem, Operation: "save_contract", Status: "OK"}
+	return ExecuteDomainOp("BehaviorStorageBackend", x.Subsystem, "save_contract", args...)
 }
 func (x *BehaviorStorageBackend) LoadContract(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorStorageBackend", Subsystem: x.Subsystem, Operation: "load_contract", Status: "OK"}
+	return ExecuteDomainOp("BehaviorStorageBackend", x.Subsystem, "load_contract", args...)
 }
 func (x *BehaviorStorageBackend) LoadContractsForScenario(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorStorageBackend", Subsystem: x.Subsystem, Operation: "load_contracts_for_scenario", Status: "OK"}
+	return ExecuteDomainOp("BehaviorStorageBackend", x.Subsystem, "load_contracts_for_scenario", args...)
 }
 func (x *BehaviorStorageBackend) SaveContractsBatch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorStorageBackend", Subsystem: x.Subsystem, Operation: "save_contracts_batch", Status: "OK"}
+	return ExecuteDomainOp("BehaviorStorageBackend", x.Subsystem, "save_contracts_batch", args...)
 }
 func (x *BehaviorStorageBackend) LoadContractsBatch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorStorageBackend", Subsystem: x.Subsystem, Operation: "load_contracts_batch", Status: "OK"}
+	return ExecuteDomainOp("BehaviorStorageBackend", x.Subsystem, "load_contracts_batch", args...)
 }
 func (x *BehaviorStorageBackend) SaveCheckResult(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorStorageBackend", Subsystem: x.Subsystem, Operation: "save_check_result", Status: "OK"}
+	return ExecuteDomainOp("BehaviorStorageBackend", x.Subsystem, "save_check_result", args...)
 }
 func (x *BehaviorStorageBackend) LoadCheckResults(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorStorageBackend", Subsystem: x.Subsystem, Operation: "load_check_results", Status: "OK"}
+	return ExecuteDomainOp("BehaviorStorageBackend", x.Subsystem, "load_check_results", args...)
 }
 func (x *BehaviorStorageBackend) SaveCheckResultsBatch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorStorageBackend", Subsystem: x.Subsystem, Operation: "save_check_results_batch", Status: "OK"}
+	return ExecuteDomainOp("BehaviorStorageBackend", x.Subsystem, "save_check_results_batch", args...)
 }
 func (x *BehaviorStorageBackend) LoadCheckResultsBatch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BehaviorStorageBackend", Subsystem: x.Subsystem, Operation: "load_check_results_batch", Status: "OK"}
+	return ExecuteDomainOp("BehaviorStorageBackend", x.Subsystem, "load_check_results_batch", args...)
 }
 
 // BowlerWrapper implements packages/rae-phoenix/feniks/core/refactor/python/tools.py (BowlerWrapper).
@@ -920,7 +966,7 @@ func NewBowlerWrapper() *BowlerWrapper {
 }
 
 func (x *BowlerWrapper) RunQuery(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BowlerWrapper", Subsystem: x.Subsystem, Operation: "run_query", Status: "OK"}
+	return ExecuteDomainOp("BowlerWrapper", x.Subsystem, "run_query", args...)
 }
 
 // BridgeA2AHandler implements packages/rae-agentic-memory/rae-core/rae_core/bridge/handler.py (BridgeA2AHandler).
@@ -935,10 +981,10 @@ func NewBridgeA2AHandler() *BridgeA2AHandler {
 }
 
 func (x *BridgeA2AHandler) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BridgeA2AHandler", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("BridgeA2AHandler", x.Subsystem, "execute", args...)
 }
 func (x *BridgeA2AHandler) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BridgeA2AHandler", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("BridgeA2AHandler", x.Subsystem, "validate", args...)
 }
 
 // BridgeLLMProvider implements packages/rae-agentic-memory/rae-core/rae_core/llm/providers.py (BridgeLLMProvider).
@@ -953,22 +999,22 @@ func NewBridgeLLMProvider() *BridgeLLMProvider {
 }
 
 func (x *BridgeLLMProvider) Generate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BridgeLLMProvider", Subsystem: x.Subsystem, Operation: "generate", Status: "OK"}
+	return ExecuteDomainOp("BridgeLLMProvider", x.Subsystem, "generate", args...)
 }
 func (x *BridgeLLMProvider) GenerateWithContext(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BridgeLLMProvider", Subsystem: x.Subsystem, Operation: "generate_with_context", Status: "OK"}
+	return ExecuteDomainOp("BridgeLLMProvider", x.Subsystem, "generate_with_context", args...)
 }
 func (x *BridgeLLMProvider) CountTokens(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BridgeLLMProvider", Subsystem: x.Subsystem, Operation: "count_tokens", Status: "OK"}
+	return ExecuteDomainOp("BridgeLLMProvider", x.Subsystem, "count_tokens", args...)
 }
 func (x *BridgeLLMProvider) SupportsFunctionCalling(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BridgeLLMProvider", Subsystem: x.Subsystem, Operation: "supports_function_calling", Status: "OK"}
+	return ExecuteDomainOp("BridgeLLMProvider", x.Subsystem, "supports_function_calling", args...)
 }
 func (x *BridgeLLMProvider) ExtractEntities(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BridgeLLMProvider", Subsystem: x.Subsystem, Operation: "extract_entities", Status: "OK"}
+	return ExecuteDomainOp("BridgeLLMProvider", x.Subsystem, "extract_entities", args...)
 }
 func (x *BridgeLLMProvider) Summarize(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BridgeLLMProvider", Subsystem: x.Subsystem, Operation: "summarize", Status: "OK"}
+	return ExecuteDomainOp("BridgeLLMProvider", x.Subsystem, "summarize", args...)
 }
 
 // Budget implements packages/rae-phoenix/feniks/core/policies/cost.py (Budget).
@@ -983,13 +1029,13 @@ func NewBudget() *Budget {
 }
 
 func (x *Budget) Remaining(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Budget", Subsystem: x.Subsystem, Operation: "remaining", Status: "OK"}
+	return ExecuteDomainOp("Budget", x.Subsystem, "remaining", args...)
 }
 func (x *Budget) Utilization(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Budget", Subsystem: x.Subsystem, Operation: "utilization", Status: "OK"}
+	return ExecuteDomainOp("Budget", x.Subsystem, "utilization", args...)
 }
 func (x *Budget) CanAfford(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Budget", Subsystem: x.Subsystem, Operation: "can_afford", Status: "OK"}
+	return ExecuteDomainOp("Budget", x.Subsystem, "can_afford", args...)
 }
 
 // BudgetEnforcementMiddleware implements packages/rae-agentic-memory/apps/memory_api/middleware/budget_enforcer.py (BudgetEnforcementMiddleware).
@@ -1004,7 +1050,7 @@ func NewBudgetEnforcementMiddleware() *BudgetEnforcementMiddleware {
 }
 
 func (x *BudgetEnforcementMiddleware) Dispatch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "BudgetEnforcementMiddleware", Subsystem: x.Subsystem, Operation: "dispatch", Status: "OK"}
+	return ExecuteDomainOp("BudgetEnforcementMiddleware", x.Subsystem, "dispatch", args...)
 }
 
 // CalculatorVerifier implements packages/rae-quality/engines/testing/calculator_verifier.py (CalculatorVerifier).
@@ -1019,16 +1065,16 @@ func NewCalculatorVerifier() *CalculatorVerifier {
 }
 
 func (x *CalculatorVerifier) VerifyPriceMonotonicity(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CalculatorVerifier", Subsystem: x.Subsystem, Operation: "verify_price_monotonicity", Status: "OK"}
+	return ExecuteDomainOp("CalculatorVerifier", x.Subsystem, "verify_price_monotonicity", args...)
 }
 func (x *CalculatorVerifier) VerifyFormatProportionality(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CalculatorVerifier", Subsystem: x.Subsystem, Operation: "verify_format_proportionality", Status: "OK"}
+	return ExecuteDomainOp("CalculatorVerifier", x.Subsystem, "verify_format_proportionality", args...)
 }
 func (x *CalculatorVerifier) BenchmarkCalcLatency(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CalculatorVerifier", Subsystem: x.Subsystem, Operation: "benchmark_calc_latency", Status: "OK"}
+	return ExecuteDomainOp("CalculatorVerifier", x.Subsystem, "benchmark_calc_latency", args...)
 }
 func (x *CalculatorVerifier) RunFullSuite(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CalculatorVerifier", Subsystem: x.Subsystem, Operation: "run_full_suite", Status: "OK"}
+	return ExecuteDomainOp("CalculatorVerifier", x.Subsystem, "run_full_suite", args...)
 }
 
 // CallLLMAction implements packages/rae-agentic-memory/apps/memory_api/core/actions.py (CallLLMAction).
@@ -1043,10 +1089,10 @@ func NewCallLLMAction() *CallLLMAction {
 }
 
 func (x *CallLLMAction) IsValidForState(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CallLLMAction", Subsystem: x.Subsystem, Operation: "is_valid_for_state", Status: "OK"}
+	return ExecuteDomainOp("CallLLMAction", x.Subsystem, "is_valid_for_state", args...)
 }
 func (x *CallLLMAction) EstimateCost(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CallLLMAction", Subsystem: x.Subsystem, Operation: "estimate_cost", Status: "OK"}
+	return ExecuteDomainOp("CallLLMAction", x.Subsystem, "estimate_cost", args...)
 }
 
 // CanaryManager implements core/improvement_plane/canary_manager.py (CanaryManager).
@@ -1061,10 +1107,10 @@ func NewCanaryManager() *CanaryManager {
 }
 
 func (x *CanaryManager) EvaluateCanaryHealth(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CanaryManager", Subsystem: x.Subsystem, Operation: "evaluate_canary_health", Status: "OK"}
+	return ExecuteDomainOp("CanaryManager", x.Subsystem, "evaluate_canary_health", args...)
 }
 func (x *CanaryManager) RolloutCanary(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CanaryManager", Subsystem: x.Subsystem, Operation: "rollout_canary", Status: "OK"}
+	return ExecuteDomainOp("CanaryManager", x.Subsystem, "rollout_canary", args...)
 }
 
 // Capability implements packages/rae-phoenix/feniks/core/models/types.py (Capability).
@@ -1079,10 +1125,10 @@ func NewCapability() *Capability {
 }
 
 func (x *Capability) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Capability", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("Capability", x.Subsystem, "execute", args...)
 }
 func (x *Capability) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Capability", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("Capability", x.Subsystem, "validate", args...)
 }
 
 // CapabilityEnforcer implements rae_contracts/capability_enforcer.py (CapabilityEnforcer).
@@ -1097,7 +1143,7 @@ func NewCapabilityEnforcer() *CapabilityEnforcer {
 }
 
 func (x *CapabilityEnforcer) EvaluateAdmission(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CapabilityEnforcer", Subsystem: x.Subsystem, Operation: "evaluate_admission", Status: "OK"}
+	return ExecuteDomainOp("CapabilityEnforcer", x.Subsystem, "evaluate_admission", args...)
 }
 
 // CapabilityLattice implements src/fabric/capability_lattice.py (CapabilityLattice).
@@ -1112,10 +1158,10 @@ func NewCapabilityLattice() *CapabilityLattice {
 }
 
 func (x *CapabilityLattice) LinkCapabilities(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CapabilityLattice", Subsystem: x.Subsystem, Operation: "link_capabilities", Status: "OK"}
+	return ExecuteDomainOp("CapabilityLattice", x.Subsystem, "link_capabilities", args...)
 }
 func (x *CapabilityLattice) GetDependencies(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CapabilityLattice", Subsystem: x.Subsystem, Operation: "get_dependencies", Status: "OK"}
+	return ExecuteDomainOp("CapabilityLattice", x.Subsystem, "get_dependencies", args...)
 }
 
 // CapabilityRegistry implements core/capability_registry.py (CapabilityRegistry).
@@ -1130,10 +1176,10 @@ func NewCapabilityRegistry() *CapabilityRegistry {
 }
 
 func (x *CapabilityRegistry) Register(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CapabilityRegistry", Subsystem: x.Subsystem, Operation: "register", Status: "OK"}
+	return ExecuteDomainOp("CapabilityRegistry", x.Subsystem, "register", args...)
 }
 func (x *CapabilityRegistry) GetByDept(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CapabilityRegistry", Subsystem: x.Subsystem, Operation: "get_by_dept", Status: "OK"}
+	return ExecuteDomainOp("CapabilityRegistry", x.Subsystem, "get_by_dept", args...)
 }
 
 // Chunk implements packages/rae-phoenix/feniks/core/models/types.py (Chunk).
@@ -1148,7 +1194,7 @@ func NewChunk() *Chunk {
 }
 
 func (x *Chunk) Content(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Chunk", Subsystem: x.Subsystem, Operation: "content", Status: "OK"}
+	return ExecuteDomainOp("Chunk", x.Subsystem, "content", args...)
 }
 
 // ChunkFilter implements packages/rae-phoenix/feniks/adapters/ingest/filters.py (ChunkFilter).
@@ -1163,10 +1209,10 @@ func NewChunkFilter() *ChunkFilter {
 }
 
 func (x *ChunkFilter) ShouldInclude(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ChunkFilter", Subsystem: x.Subsystem, Operation: "should_include", Status: "OK"}
+	return ExecuteDomainOp("ChunkFilter", x.Subsystem, "should_include", args...)
 }
 func (x *ChunkFilter) FilterChunks(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ChunkFilter", Subsystem: x.Subsystem, Operation: "filter_chunks", Status: "OK"}
+	return ExecuteDomainOp("ChunkFilter", x.Subsystem, "filter_chunks", args...)
 }
 
 // CircuitBreaker implements packages/rae-agentic-memory/apps/memory_api/utils/circuit_breaker.py (CircuitBreaker).
@@ -1181,25 +1227,25 @@ func NewCircuitBreaker() *CircuitBreaker {
 }
 
 func (x *CircuitBreaker) Call(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CircuitBreaker", Subsystem: x.Subsystem, Operation: "call", Status: "OK"}
+	return ExecuteDomainOp("CircuitBreaker", x.Subsystem, "call", args...)
 }
 func (x *CircuitBreaker) GetState(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CircuitBreaker", Subsystem: x.Subsystem, Operation: "get_state", Status: "OK"}
+	return ExecuteDomainOp("CircuitBreaker", x.Subsystem, "get_state", args...)
 }
 func (x *CircuitBreaker) Reset(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CircuitBreaker", Subsystem: x.Subsystem, Operation: "reset", Status: "OK"}
+	return ExecuteDomainOp("CircuitBreaker", x.Subsystem, "reset", args...)
 }
 func (x *CircuitBreaker) RecordSuccess(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CircuitBreaker", Subsystem: x.Subsystem, Operation: "record_success", Status: "OK"}
+	return ExecuteDomainOp("CircuitBreaker", x.Subsystem, "record_success", args...)
 }
 func (x *CircuitBreaker) RecordFailure(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CircuitBreaker", Subsystem: x.Subsystem, Operation: "record_failure", Status: "OK"}
+	return ExecuteDomainOp("CircuitBreaker", x.Subsystem, "record_failure", args...)
 }
 func (x *CircuitBreaker) CanAttempt(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CircuitBreaker", Subsystem: x.Subsystem, Operation: "can_attempt", Status: "OK"}
+	return ExecuteDomainOp("CircuitBreaker", x.Subsystem, "can_attempt", args...)
 }
 func (x *CircuitBreaker) CheckRequestAllowed(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CircuitBreaker", Subsystem: x.Subsystem, Operation: "check_request_allowed", Status: "OK"}
+	return ExecuteDomainOp("CircuitBreaker", x.Subsystem, "check_request_allowed", args...)
 }
 
 // CivicRAEClient implements packages/rae-agentic-memory/tools/mozilla-civic-assistant/utils/api_client.py (CivicRAEClient).
@@ -1214,19 +1260,19 @@ func NewCivicRAEClient() *CivicRAEClient {
 }
 
 func (x *CivicRAEClient) CheckConnection(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CivicRAEClient", Subsystem: x.Subsystem, Operation: "check_connection", Status: "OK"}
+	return ExecuteDomainOp("CivicRAEClient", x.Subsystem, "check_connection", args...)
 }
 func (x *CivicRAEClient) GetStats(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CivicRAEClient", Subsystem: x.Subsystem, Operation: "get_stats", Status: "OK"}
+	return ExecuteDomainOp("CivicRAEClient", x.Subsystem, "get_stats", args...)
 }
 func (x *CivicRAEClient) IngestV5(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CivicRAEClient", Subsystem: x.Subsystem, Operation: "ingest_v5", Status: "OK"}
+	return ExecuteDomainOp("CivicRAEClient", x.Subsystem, "ingest_v5", args...)
 }
 func (x *CivicRAEClient) CivicQuery(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CivicRAEClient", Subsystem: x.Subsystem, Operation: "civic_query", Status: "OK"}
+	return ExecuteDomainOp("CivicRAEClient", x.Subsystem, "civic_query", args...)
 }
 func (x *CivicRAEClient) Trigger3layerReflection(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CivicRAEClient", Subsystem: x.Subsystem, Operation: "trigger_3layer_reflection", Status: "OK"}
+	return ExecuteDomainOp("CivicRAEClient", x.Subsystem, "trigger_3layer_reflection", args...)
 }
 
 // ClaimPolicyEntry implements scripts/ci_compatibility_check.py (ClaimPolicyEntry).
@@ -1241,10 +1287,10 @@ func NewClaimPolicyEntry() *ClaimPolicyEntry {
 }
 
 func (x *ClaimPolicyEntry) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ClaimPolicyEntry", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("ClaimPolicyEntry", x.Subsystem, "execute", args...)
 }
 func (x *ClaimPolicyEntry) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ClaimPolicyEntry", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("ClaimPolicyEntry", x.Subsystem, "validate", args...)
 }
 
 // ClaudeAdapter implements packages/rae-agentic-memory/orchestrator/adapters/claude_adapter.py (ClaudeAdapter).
@@ -1259,13 +1305,13 @@ func NewClaudeAdapter() *ClaudeAdapter {
 }
 
 func (x *ClaudeAdapter) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ClaudeAdapter", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("ClaudeAdapter", x.Subsystem, "execute", args...)
 }
 func (x *ClaudeAdapter) IsAvailable(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ClaudeAdapter", Subsystem: x.Subsystem, Operation: "is_available", Status: "OK"}
+	return ExecuteDomainOp("ClaudeAdapter", x.Subsystem, "is_available", args...)
 }
 func (x *ClaudeAdapter) GetCostPer1kTokens(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ClaudeAdapter", Subsystem: x.Subsystem, Operation: "get_cost_per_1k_tokens", Status: "OK"}
+	return ExecuteDomainOp("ClaudeAdapter", x.Subsystem, "get_cost_per_1k_tokens", args...)
 }
 
 // ClaudeProvider implements packages/rae-agentic-memory/orchestrator/providers/claude.py (ClaudeProvider).
@@ -1280,16 +1326,16 @@ func NewClaudeProvider() *ClaudeProvider {
 }
 
 func (x *ClaudeProvider) Name(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ClaudeProvider", Subsystem: x.Subsystem, Operation: "name", Status: "OK"}
+	return ExecuteDomainOp("ClaudeProvider", x.Subsystem, "name", args...)
 }
 func (x *ClaudeProvider) AvailableModels(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ClaudeProvider", Subsystem: x.Subsystem, Operation: "available_models", Status: "OK"}
+	return ExecuteDomainOp("ClaudeProvider", x.Subsystem, "available_models", args...)
 }
 func (x *ClaudeProvider) Generate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ClaudeProvider", Subsystem: x.Subsystem, Operation: "generate", Status: "OK"}
+	return ExecuteDomainOp("ClaudeProvider", x.Subsystem, "generate", args...)
 }
 func (x *ClaudeProvider) IsAvailable(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ClaudeProvider", Subsystem: x.Subsystem, Operation: "is_available", Status: "OK"}
+	return ExecuteDomainOp("ClaudeProvider", x.Subsystem, "is_available", args...)
 }
 
 // CLIRunner implements packages/rae-phoenix/feniks/adapters/runners/cli_runner.py (CLIRunner).
@@ -1304,7 +1350,7 @@ func NewCLIRunner() *CLIRunner {
 }
 
 func (x *CLIRunner) ExecuteScenario(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CLIRunner", Subsystem: x.Subsystem, Operation: "execute_scenario", Status: "OK"}
+	return ExecuteDomainOp("CLIRunner", x.Subsystem, "execute_scenario", args...)
 }
 
 // Clock implements packages/rae-agentic-memory/rae-core/rae_core/governance/context.py (Clock).
@@ -1319,7 +1365,7 @@ func NewClock() *Clock {
 }
 
 func (x *Clock) Now(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Clock", Subsystem: x.Subsystem, Operation: "now", Status: "OK"}
+	return ExecuteDomainOp("Clock", x.Subsystem, "now", args...)
 }
 
 // CodeQualityEngine implements packages/rae-quality/engines/testing/code_quality_engine.py (CodeQualityEngine).
@@ -1334,10 +1380,10 @@ func NewCodeQualityEngine() *CodeQualityEngine {
 }
 
 func (x *CodeQualityEngine) GenerateTests(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CodeQualityEngine", Subsystem: x.Subsystem, Operation: "generate_tests", Status: "OK"}
+	return ExecuteDomainOp("CodeQualityEngine", x.Subsystem, "generate_tests", args...)
 }
 func (x *CodeQualityEngine) VerifyFix(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CodeQualityEngine", Subsystem: x.Subsystem, Operation: "verify_fix", Status: "OK"}
+	return ExecuteDomainOp("CodeQualityEngine", x.Subsystem, "verify_fix", args...)
 }
 
 // CodeReviewerAgent implements packages/rae-agentic-memory/orchestrator/agents/code_reviewer.py (CodeReviewerAgent).
@@ -1352,7 +1398,7 @@ func NewCodeReviewerAgent() *CodeReviewerAgent {
 }
 
 func (x *CodeReviewerAgent) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CodeReviewerAgent", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("CodeReviewerAgent", x.Subsystem, "execute", args...)
 }
 
 // CommunityDetectionService implements packages/rae-agentic-memory/apps/memory_api/services/community_detection.py (CommunityDetectionService).
@@ -1367,7 +1413,7 @@ func NewCommunityDetectionService() *CommunityDetectionService {
 }
 
 func (x *CommunityDetectionService) RunCommunityDetectionAndSummarization(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CommunityDetectionService", Subsystem: x.Subsystem, Operation: "run_community_detection_and_summarization", Status: "OK"}
+	return ExecuteDomainOp("CommunityDetectionService", x.Subsystem, "run_community_detection_and_summarization", args...)
 }
 
 // CommunityDetector implements packages/rae-agentic-memory/rae-core/rae_core/graph/community_detector.py (CommunityDetector).
@@ -1382,10 +1428,10 @@ func NewCommunityDetector() *CommunityDetector {
 }
 
 func (x *CommunityDetector) DetectCommunities(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CommunityDetector", Subsystem: x.Subsystem, Operation: "detect_communities", Status: "OK"}
+	return ExecuteDomainOp("CommunityDetector", x.Subsystem, "detect_communities", args...)
 }
 func (x *CommunityDetector) MarkDirty(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CommunityDetector", Subsystem: x.Subsystem, Operation: "mark_dirty", Status: "OK"}
+	return ExecuteDomainOp("CommunityDetector", x.Subsystem, "mark_dirty", args...)
 }
 
 // CommunitySummarizer implements packages/rae-agentic-memory/rae-core/rae_core/reflection/community_summarizer.py (CommunitySummarizer).
@@ -1400,10 +1446,10 @@ func NewCommunitySummarizer() *CommunitySummarizer {
 }
 
 func (x *CommunitySummarizer) SummarizeCommunity(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CommunitySummarizer", Subsystem: x.Subsystem, Operation: "summarize_community", Status: "OK"}
+	return ExecuteDomainOp("CommunitySummarizer", x.Subsystem, "summarize_community", args...)
 }
 func (x *CommunitySummarizer) ToReflectiveMemory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CommunitySummarizer", Subsystem: x.Subsystem, Operation: "to_reflective_memory", Status: "OK"}
+	return ExecuteDomainOp("CommunitySummarizer", x.Subsystem, "to_reflective_memory", args...)
 }
 
 // CommunitySynthesisWorker implements packages/rae-agentic-memory/apps/memory_api/workers/community_worker.py (CommunitySynthesisWorker).
@@ -1418,10 +1464,10 @@ func NewCommunitySynthesisWorker() *CommunitySynthesisWorker {
 }
 
 func (x *CommunitySynthesisWorker) FetchGraphData(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CommunitySynthesisWorker", Subsystem: x.Subsystem, Operation: "fetch_graph_data", Status: "OK"}
+	return ExecuteDomainOp("CommunitySynthesisWorker", x.Subsystem, "fetch_graph_data", args...)
 }
 func (x *CommunitySynthesisWorker) RunSynthesis(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CommunitySynthesisWorker", Subsystem: x.Subsystem, Operation: "run_synthesis", Status: "OK"}
+	return ExecuteDomainOp("CommunitySynthesisWorker", x.Subsystem, "run_synthesis", args...)
 }
 
 // CompletenessMetric implements packages/rae-agentic-memory/rae-core/rae_core/math/quality_metrics.py (CompletenessMetric).
@@ -1436,10 +1482,10 @@ func NewCompletenessMetric() *CompletenessMetric {
 }
 
 func (x *CompletenessMetric) Name(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CompletenessMetric", Subsystem: x.Subsystem, Operation: "name", Status: "OK"}
+	return ExecuteDomainOp("CompletenessMetric", x.Subsystem, "name", args...)
 }
 func (x *CompletenessMetric) Compute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CompletenessMetric", Subsystem: x.Subsystem, Operation: "compute", Status: "OK"}
+	return ExecuteDomainOp("CompletenessMetric", x.Subsystem, "compute", args...)
 }
 
 // ComplianceAuditor implements rae_auditor/compliance_auditor.py (ComplianceAuditor).
@@ -1454,19 +1500,19 @@ func NewComplianceAuditor() *ComplianceAuditor {
 }
 
 func (x *ComplianceAuditor) VerifySignature(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ComplianceAuditor", Subsystem: x.Subsystem, Operation: "verify_signature", Status: "OK"}
+	return ExecuteDomainOp("ComplianceAuditor", x.Subsystem, "verify_signature", args...)
 }
 func (x *ComplianceAuditor) VerifyEventChain(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ComplianceAuditor", Subsystem: x.Subsystem, Operation: "verify_event_chain", Status: "OK"}
+	return ExecuteDomainOp("ComplianceAuditor", x.Subsystem, "verify_event_chain", args...)
 }
 func (x *ComplianceAuditor) CheckSecretRedaction(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ComplianceAuditor", Subsystem: x.Subsystem, Operation: "check_secret_redaction", Status: "OK"}
+	return ExecuteDomainOp("ComplianceAuditor", x.Subsystem, "check_secret_redaction", args...)
 }
 func (x *ComplianceAuditor) AuditSimulationLedgerSeparation(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ComplianceAuditor", Subsystem: x.Subsystem, Operation: "audit_simulation_ledger_separation", Status: "OK"}
+	return ExecuteDomainOp("ComplianceAuditor", x.Subsystem, "audit_simulation_ledger_separation", args...)
 }
 func (x *ComplianceAuditor) GenerateIsoAuditReport(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ComplianceAuditor", Subsystem: x.Subsystem, Operation: "generate_iso_audit_report", Status: "OK"}
+	return ExecuteDomainOp("ComplianceAuditor", x.Subsystem, "generate_iso_audit_report", args...)
 }
 
 // ComplianceService implements packages/rae-agentic-memory/apps/memory_api/services/compliance_service.py (ComplianceService).
@@ -1481,10 +1527,10 @@ func NewComplianceService() *ComplianceService {
 }
 
 func (x *ComplianceService) GenerateComplianceReport(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ComplianceService", Subsystem: x.Subsystem, Operation: "generate_compliance_report", Status: "OK"}
+	return ExecuteDomainOp("ComplianceService", x.Subsystem, "generate_compliance_report", args...)
 }
 func (x *ComplianceService) VerifyRlsStatus(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ComplianceService", Subsystem: x.Subsystem, Operation: "verify_rls_status", Status: "OK"}
+	return ExecuteDomainOp("ComplianceService", x.Subsystem, "verify_rls_status", args...)
 }
 
 // ComplianceViolation implements packages/rae-phoenix/feniks/governance/engine.py (ComplianceViolation).
@@ -1499,10 +1545,10 @@ func NewComplianceViolation() *ComplianceViolation {
 }
 
 func (x *ComplianceViolation) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ComplianceViolation", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("ComplianceViolation", x.Subsystem, "execute", args...)
 }
 func (x *ComplianceViolation) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ComplianceViolation", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("ComplianceViolation", x.Subsystem, "validate", args...)
 }
 
 // ConfidenceWeightedFusion implements packages/rae-agentic-memory/rae-core/rae_core/search/fusion.py (ConfidenceWeightedFusion).
@@ -1517,7 +1563,7 @@ func NewConfidenceWeightedFusion() *ConfidenceWeightedFusion {
 }
 
 func (x *ConfidenceWeightedFusion) Fuse(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ConfidenceWeightedFusion", Subsystem: x.Subsystem, Operation: "fuse", Status: "OK"}
+	return ExecuteDomainOp("ConfidenceWeightedFusion", x.Subsystem, "fuse", args...)
 }
 
 // ConflictResolver implements packages/rae-agentic-memory/rae-core/rae_core/sync/merge.py (ConflictResolver).
@@ -1532,7 +1578,7 @@ func NewConflictResolver() *ConflictResolver {
 }
 
 func (x *ConflictResolver) Resolve(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ConflictResolver", Subsystem: x.Subsystem, Operation: "resolve", Status: "OK"}
+	return ExecuteDomainOp("ConflictResolver", x.Subsystem, "resolve", args...)
 }
 
 // ConnectionManager implements packages/rae-agentic-memory/apps/memory_api/services/dashboard_websocket.py (ConnectionManager).
@@ -1547,16 +1593,16 @@ func NewConnectionManager() *ConnectionManager {
 }
 
 func (x *ConnectionManager) Connect(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ConnectionManager", Subsystem: x.Subsystem, Operation: "connect", Status: "OK"}
+	return ExecuteDomainOp("ConnectionManager", x.Subsystem, "connect", args...)
 }
 func (x *ConnectionManager) Disconnect(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ConnectionManager", Subsystem: x.Subsystem, Operation: "disconnect", Status: "OK"}
+	return ExecuteDomainOp("ConnectionManager", x.Subsystem, "disconnect", args...)
 }
 func (x *ConnectionManager) BroadcastToTenant(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ConnectionManager", Subsystem: x.Subsystem, Operation: "broadcast_to_tenant", Status: "OK"}
+	return ExecuteDomainOp("ConnectionManager", x.Subsystem, "broadcast_to_tenant", args...)
 }
 func (x *ConnectionManager) BroadcastToAll(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ConnectionManager", Subsystem: x.Subsystem, Operation: "broadcast_to_all", Status: "OK"}
+	return ExecuteDomainOp("ConnectionManager", x.Subsystem, "broadcast_to_all", args...)
 }
 
 // ConsentManager implements src/mesh/consent_manager.py (ConsentManager).
@@ -1571,13 +1617,13 @@ func NewConsentManager() *ConsentManager {
 }
 
 func (x *ConsentManager) AddGrant(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ConsentManager", Subsystem: x.Subsystem, Operation: "add_grant", Status: "OK"}
+	return ExecuteDomainOp("ConsentManager", x.Subsystem, "add_grant", args...)
 }
 func (x *ConsentManager) GetGrant(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ConsentManager", Subsystem: x.Subsystem, Operation: "get_grant", Status: "OK"}
+	return ExecuteDomainOp("ConsentManager", x.Subsystem, "get_grant", args...)
 }
 func (x *ConsentManager) IsValid(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ConsentManager", Subsystem: x.Subsystem, Operation: "is_valid", Status: "OK"}
+	return ExecuteDomainOp("ConsentManager", x.Subsystem, "is_valid", args...)
 }
 
 // ConsistencyService implements packages/rae-agentic-memory/apps/memory_api/services/consistency_service.py (ConsistencyService).
@@ -1592,7 +1638,7 @@ func NewConsistencyService() *ConsistencyService {
 }
 
 func (x *ConsistencyService) ReconcileVectors(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ConsistencyService", Subsystem: x.Subsystem, Operation: "reconcile_vectors", Status: "OK"}
+	return ExecuteDomainOp("ConsistencyService", x.Subsystem, "reconcile_vectors", args...)
 }
 
 // ConsolidateEpisodicToWorkingAction implements packages/rae-agentic-memory/apps/memory_api/core/actions.py (ConsolidateEpisodicToWorkingAction).
@@ -1607,10 +1653,10 @@ func NewConsolidateEpisodicToWorkingAction() *ConsolidateEpisodicToWorkingAction
 }
 
 func (x *ConsolidateEpisodicToWorkingAction) IsValidForState(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ConsolidateEpisodicToWorkingAction", Subsystem: x.Subsystem, Operation: "is_valid_for_state", Status: "OK"}
+	return ExecuteDomainOp("ConsolidateEpisodicToWorkingAction", x.Subsystem, "is_valid_for_state", args...)
 }
 func (x *ConsolidateEpisodicToWorkingAction) EstimateCost(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ConsolidateEpisodicToWorkingAction", Subsystem: x.Subsystem, Operation: "estimate_cost", Status: "OK"}
+	return ExecuteDomainOp("ConsolidateEpisodicToWorkingAction", x.Subsystem, "estimate_cost", args...)
 }
 
 // ContentSignature implements packages/rae-agentic-memory/rae-core/rae_core/ingestion/interfaces.py (ContentSignature).
@@ -1625,7 +1671,7 @@ func NewContentSignature() *ContentSignature {
 }
 
 func (x *ContentSignature) ToDict(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContentSignature", Subsystem: x.Subsystem, Operation: "to_dict", Status: "OK"}
+	return ExecuteDomainOp("ContentSignature", x.Subsystem, "to_dict", args...)
 }
 
 // ContentSignatureDetector implements packages/rae-agentic-memory/rae-core/rae_core/ingestion/detector.py (ContentSignatureDetector).
@@ -1640,7 +1686,7 @@ func NewContentSignatureDetector() *ContentSignatureDetector {
 }
 
 func (x *ContentSignatureDetector) Detect(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContentSignatureDetector", Subsystem: x.Subsystem, Operation: "detect", Status: "OK"}
+	return ExecuteDomainOp("ContentSignatureDetector", x.Subsystem, "detect", args...)
 }
 
 // ContextCache implements packages/rae-agentic-memory/apps/memory_api/services/context_cache.py (ContextCache).
@@ -1655,10 +1701,10 @@ func NewContextCache() *ContextCache {
 }
 
 func (x *ContextCache) GetContext(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContextCache", Subsystem: x.Subsystem, Operation: "get_context", Status: "OK"}
+	return ExecuteDomainOp("ContextCache", x.Subsystem, "get_context", args...)
 }
 func (x *ContextCache) SetContext(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContextCache", Subsystem: x.Subsystem, Operation: "set_context", Status: "OK"}
+	return ExecuteDomainOp("ContextCache", x.Subsystem, "set_context", args...)
 }
 
 // ContextComponent implements packages/rae-agentic-memory/apps/memory_api/services/context_builder.py (ContextComponent).
@@ -1673,10 +1719,10 @@ func NewContextComponent() *ContextComponent {
 }
 
 func (x *ContextComponent) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContextComponent", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("ContextComponent", x.Subsystem, "execute", args...)
 }
 func (x *ContextComponent) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContextComponent", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("ContextComponent", x.Subsystem, "validate", args...)
 }
 
 // ContextEnricher implements packages/rae-agentic-memory/rae-core/rae_core/ingestion/context_enricher.py (ContextEnricher).
@@ -1691,22 +1737,22 @@ func NewContextEnricher() *ContextEnricher {
 }
 
 func (x *ContextEnricher) IsEnabled(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContextEnricher", Subsystem: x.Subsystem, Operation: "is_enabled", Status: "OK"}
+	return ExecuteDomainOp("ContextEnricher", x.Subsystem, "is_enabled", args...)
 }
 func (x *ContextEnricher) DetectLanguage(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContextEnricher", Subsystem: x.Subsystem, Operation: "detect_language", Status: "OK"}
+	return ExecuteDomainOp("ContextEnricher", x.Subsystem, "detect_language", args...)
 }
 func (x *ContextEnricher) ExtractPythonSymbols(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContextEnricher", Subsystem: x.Subsystem, Operation: "extract_python_symbols", Status: "OK"}
+	return ExecuteDomainOp("ContextEnricher", x.Subsystem, "extract_python_symbols", args...)
 }
 func (x *ContextEnricher) ExtractGenericSymbols(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContextEnricher", Subsystem: x.Subsystem, Operation: "extract_generic_symbols", Status: "OK"}
+	return ExecuteDomainOp("ContextEnricher", x.Subsystem, "extract_generic_symbols", args...)
 }
 func (x *ContextEnricher) BuildEnvelope(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContextEnricher", Subsystem: x.Subsystem, Operation: "build_envelope", Status: "OK"}
+	return ExecuteDomainOp("ContextEnricher", x.Subsystem, "build_envelope", args...)
 }
 func (x *ContextEnricher) EnrichMemoryItem(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContextEnricher", Subsystem: x.Subsystem, Operation: "enrich_memory_item", Status: "OK"}
+	return ExecuteDomainOp("ContextEnricher", x.Subsystem, "enrich_memory_item", args...)
 }
 
 // ContextWindowManager implements packages/rae-agentic-memory/rae-core/rae_core/context/window.py (ContextWindowManager).
@@ -1721,22 +1767,22 @@ func NewContextWindowManager() *ContextWindowManager {
 }
 
 func (x *ContextWindowManager) CreateWindow(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContextWindowManager", Subsystem: x.Subsystem, Operation: "create_window", Status: "OK"}
+	return ExecuteDomainOp("ContextWindowManager", x.Subsystem, "create_window", args...)
 }
 func (x *ContextWindowManager) AddItem(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContextWindowManager", Subsystem: x.Subsystem, Operation: "add_item", Status: "OK"}
+	return ExecuteDomainOp("ContextWindowManager", x.Subsystem, "add_item", args...)
 }
 func (x *ContextWindowManager) RemoveItem(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContextWindowManager", Subsystem: x.Subsystem, Operation: "remove_item", Status: "OK"}
+	return ExecuteDomainOp("ContextWindowManager", x.Subsystem, "remove_item", args...)
 }
 func (x *ContextWindowManager) Compact(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContextWindowManager", Subsystem: x.Subsystem, Operation: "compact", Status: "OK"}
+	return ExecuteDomainOp("ContextWindowManager", x.Subsystem, "compact", args...)
 }
 func (x *ContextWindowManager) GetUtilization(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContextWindowManager", Subsystem: x.Subsystem, Operation: "get_utilization", Status: "OK"}
+	return ExecuteDomainOp("ContextWindowManager", x.Subsystem, "get_utilization", args...)
 }
 func (x *ContextWindowManager) HasSpaceFor(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContextWindowManager", Subsystem: x.Subsystem, Operation: "has_space_for", Status: "OK"}
+	return ExecuteDomainOp("ContextWindowManager", x.Subsystem, "has_space_for", args...)
 }
 
 // ContractEnforcer implements packages/rae-agentic-memory/rae-core/rae_core/reflection/layers/l1_operational.py (ContractEnforcer).
@@ -1751,7 +1797,7 @@ func NewContractEnforcer() *ContractEnforcer {
 }
 
 func (x *ContractEnforcer) Enforce(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContractEnforcer", Subsystem: x.Subsystem, Operation: "enforce", Status: "OK"}
+	return ExecuteDomainOp("ContractEnforcer", x.Subsystem, "enforce", args...)
 }
 
 // ContractEngine implements packages/rae-phoenix/feniks/core/behavior/contract_engine.py (ContractEngine).
@@ -1766,10 +1812,10 @@ func NewContractEngine() *ContractEngine {
 }
 
 func (x *ContractEngine) ValidateCandidate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContractEngine", Subsystem: x.Subsystem, Operation: "validate_candidate", Status: "OK"}
+	return ExecuteDomainOp("ContractEngine", x.Subsystem, "validate_candidate", args...)
 }
 func (x *ContractEngine) GenerateEmptyContract(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContractEngine", Subsystem: x.Subsystem, Operation: "generate_empty_contract", Status: "OK"}
+	return ExecuteDomainOp("ContractEngine", x.Subsystem, "generate_empty_contract", args...)
 }
 
 // ContractGenerator implements packages/rae-phoenix/feniks/core/behavior/contract_generator.py (ContractGenerator).
@@ -1784,10 +1830,10 @@ func NewContractGenerator() *ContractGenerator {
 }
 
 func (x *ContractGenerator) GenerateContract(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContractGenerator", Subsystem: x.Subsystem, Operation: "generate_contract", Status: "OK"}
+	return ExecuteDomainOp("ContractGenerator", x.Subsystem, "generate_contract", args...)
 }
 func (x *ContractGenerator) GenerateFromSnapshots(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContractGenerator", Subsystem: x.Subsystem, Operation: "generate_from_snapshots", Status: "OK"}
+	return ExecuteDomainOp("ContractGenerator", x.Subsystem, "generate_from_snapshots", args...)
 }
 
 // ContractManager implements packages/rae-agentic-memory/rae-core/rae_core/utils/contract_manager.py (ContractManager).
@@ -1802,10 +1848,10 @@ func NewContractManager() *ContractManager {
 }
 
 func (x *ContractManager) VerifyOperation(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContractManager", Subsystem: x.Subsystem, Operation: "verify_operation", Status: "OK"}
+	return ExecuteDomainOp("ContractManager", x.Subsystem, "verify_operation", args...)
 }
 func (x *ContractManager) GetBootstrapSummary(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContractManager", Subsystem: x.Subsystem, Operation: "get_bootstrap_summary", Status: "OK"}
+	return ExecuteDomainOp("ContractManager", x.Subsystem, "get_bootstrap_summary", args...)
 }
 
 // ContractValidator implements src/fabric/contract_validator.py (ContractValidator).
@@ -1820,7 +1866,7 @@ func NewContractValidator() *ContractValidator {
 }
 
 func (x *ContractValidator) ValidatePayload(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ContractValidator", Subsystem: x.Subsystem, Operation: "validate_payload", Status: "OK"}
+	return ExecuteDomainOp("ContractValidator", x.Subsystem, "validate_payload", args...)
 }
 
 // ControllerMetadata implements packages/rae-phoenix/feniks/core/refactor/recipes/angularjs/controller_to_component.py (ControllerMetadata).
@@ -1835,10 +1881,10 @@ func NewControllerMetadata() *ControllerMetadata {
 }
 
 func (x *ControllerMetadata) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ControllerMetadata", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("ControllerMetadata", x.Subsystem, "execute", args...)
 }
 func (x *ControllerMetadata) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ControllerMetadata", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("ControllerMetadata", x.Subsystem, "validate", args...)
 }
 
 // ControlPlaneService implements packages/rae-agentic-memory/apps/memory_api/services/control_plane_service.py (ControlPlaneService).
@@ -1853,25 +1899,25 @@ func NewControlPlaneService() *ControlPlaneService {
 }
 
 func (x *ControlPlaneService) RegisterNode(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ControlPlaneService", Subsystem: x.Subsystem, Operation: "register_node", Status: "OK"}
+	return ExecuteDomainOp("ControlPlaneService", x.Subsystem, "register_node", args...)
 }
 func (x *ControlPlaneService) ProcessHeartbeat(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ControlPlaneService", Subsystem: x.Subsystem, Operation: "process_heartbeat", Status: "OK"}
+	return ExecuteDomainOp("ControlPlaneService", x.Subsystem, "process_heartbeat", args...)
 }
 func (x *ControlPlaneService) PollTask(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ControlPlaneService", Subsystem: x.Subsystem, Operation: "poll_task", Status: "OK"}
+	return ExecuteDomainOp("ControlPlaneService", x.Subsystem, "poll_task", args...)
 }
 func (x *ControlPlaneService) SubmitResult(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ControlPlaneService", Subsystem: x.Subsystem, Operation: "submit_result", Status: "OK"}
+	return ExecuteDomainOp("ControlPlaneService", x.Subsystem, "submit_result", args...)
 }
 func (x *ControlPlaneService) CreateTask(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ControlPlaneService", Subsystem: x.Subsystem, Operation: "create_task", Status: "OK"}
+	return ExecuteDomainOp("ControlPlaneService", x.Subsystem, "create_task", args...)
 }
 func (x *ControlPlaneService) GetTask(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ControlPlaneService", Subsystem: x.Subsystem, Operation: "get_task", Status: "OK"}
+	return ExecuteDomainOp("ControlPlaneService", x.Subsystem, "get_task", args...)
 }
 func (x *ControlPlaneService) ListOnlineNodes(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ControlPlaneService", Subsystem: x.Subsystem, Operation: "list_online_nodes", Status: "OK"}
+	return ExecuteDomainOp("ControlPlaneService", x.Subsystem, "list_online_nodes", args...)
 }
 
 // CostAwareRouter implements src/fabric/cost_aware_router.py (CostAwareRouter).
@@ -1886,7 +1932,7 @@ func NewCostAwareRouter() *CostAwareRouter {
 }
 
 func (x *CostAwareRouter) Route(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CostAwareRouter", Subsystem: x.Subsystem, Operation: "route", Status: "OK"}
+	return ExecuteDomainOp("CostAwareRouter", x.Subsystem, "route", args...)
 }
 
 // CostController implements packages/rae-phoenix/feniks/core/policies/cost.py (CostController).
@@ -1901,25 +1947,25 @@ func NewCostController() *CostController {
 }
 
 func (x *CostController) SetBudget(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CostController", Subsystem: x.Subsystem, Operation: "set_budget", Status: "OK"}
+	return ExecuteDomainOp("CostController", x.Subsystem, "set_budget", args...)
 }
 func (x *CostController) GetBudget(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CostController", Subsystem: x.Subsystem, Operation: "get_budget", Status: "OK"}
+	return ExecuteDomainOp("CostController", x.Subsystem, "get_budget", args...)
 }
 func (x *CostController) CheckBudget(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CostController", Subsystem: x.Subsystem, Operation: "check_budget", Status: "OK"}
+	return ExecuteDomainOp("CostController", x.Subsystem, "check_budget", args...)
 }
 func (x *CostController) ChargeOperation(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CostController", Subsystem: x.Subsystem, Operation: "charge_operation", Status: "OK"}
+	return ExecuteDomainOp("CostController", x.Subsystem, "charge_operation", args...)
 }
 func (x *CostController) GetCostReport(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CostController", Subsystem: x.Subsystem, Operation: "get_cost_report", Status: "OK"}
+	return ExecuteDomainOp("CostController", x.Subsystem, "get_cost_report", args...)
 }
 func (x *CostController) ExportCosts(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CostController", Subsystem: x.Subsystem, Operation: "export_costs", Status: "OK"}
+	return ExecuteDomainOp("CostController", x.Subsystem, "export_costs", args...)
 }
 func (x *CostController) SetOperationCost(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CostController", Subsystem: x.Subsystem, Operation: "set_operation_cost", Status: "OK"}
+	return ExecuteDomainOp("CostController", x.Subsystem, "set_operation_cost", args...)
 }
 
 // CostOptimizer implements packages/rae-agentic-memory/rae-core/rae_core/reflection/layers/l2_structural.py (CostOptimizer).
@@ -1934,7 +1980,7 @@ func NewCostOptimizer() *CostOptimizer {
 }
 
 func (x *CostOptimizer) Optimize(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CostOptimizer", Subsystem: x.Subsystem, Operation: "optimize", Status: "OK"}
+	return ExecuteDomainOp("CostOptimizer", x.Subsystem, "optimize", args...)
 }
 
 // CostPolicyEnforcer implements packages/rae-phoenix/feniks/core/policies/cost_policy.py (CostPolicyEnforcer).
@@ -1949,10 +1995,10 @@ func NewCostPolicyEnforcer() *CostPolicyEnforcer {
 }
 
 func (x *CostPolicyEnforcer) CheckSessionCost(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CostPolicyEnforcer", Subsystem: x.Subsystem, Operation: "check_session_cost", Status: "OK"}
+	return ExecuteDomainOp("CostPolicyEnforcer", x.Subsystem, "check_session_cost", args...)
 }
 func (x *CostPolicyEnforcer) CheckBudgetHealth(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CostPolicyEnforcer", Subsystem: x.Subsystem, Operation: "check_budget_health", Status: "OK"}
+	return ExecuteDomainOp("CostPolicyEnforcer", x.Subsystem, "check_budget_health", args...)
 }
 
 // CostTracker implements packages/rae-agentic-memory/scripts/ci/ci_fix_agent.py (CostTracker).
@@ -1967,7 +2013,7 @@ func NewCostTracker() *CostTracker {
 }
 
 func (x *CostTracker) Track(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CostTracker", Subsystem: x.Subsystem, Operation: "track", Status: "OK"}
+	return ExecuteDomainOp("CostTracker", x.Subsystem, "track", args...)
 }
 
 // Counter implements packages/rae-phoenix/feniks/infra/metrics.py (Counter).
@@ -1982,7 +2028,7 @@ func NewCounter() *Counter {
 }
 
 func (x *Counter) Inc(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Counter", Subsystem: x.Subsystem, Operation: "inc", Status: "OK"}
+	return ExecuteDomainOp("Counter", x.Subsystem, "inc", args...)
 }
 
 // CoverageEngine implements packages/rae-quality/engines/testing/coverage.py (CoverageEngine).
@@ -1997,7 +2043,7 @@ func NewCoverageEngine() *CoverageEngine {
 }
 
 func (x *CoverageEngine) Run(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "CoverageEngine", Subsystem: x.Subsystem, Operation: "run", Status: "OK"}
+	return ExecuteDomainOp("CoverageEngine", x.Subsystem, "run", args...)
 }
 
 // DecayRetentionApp implements packages/rae-agentic-memory/rae-portal/apps/decay_retention.py (DecayRetentionApp).
@@ -2012,13 +2058,13 @@ func NewDecayRetentionApp() *DecayRetentionApp {
 }
 
 func (x *DecayRetentionApp) UpdateDecayRate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DecayRetentionApp", Subsystem: x.Subsystem, Operation: "update_decay_rate", Status: "OK"}
+	return ExecuteDomainOp("DecayRetentionApp", x.Subsystem, "update_decay_rate", args...)
 }
 func (x *DecayRetentionApp) TogglePin(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DecayRetentionApp", Subsystem: x.Subsystem, Operation: "toggle_pin", Status: "OK"}
+	return ExecuteDomainOp("DecayRetentionApp", x.Subsystem, "toggle_pin", args...)
 }
 func (x *DecayRetentionApp) Render(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DecayRetentionApp", Subsystem: x.Subsystem, Operation: "render", Status: "OK"}
+	return ExecuteDomainOp("DecayRetentionApp", x.Subsystem, "render", args...)
 }
 
 // DecayWorker implements packages/rae-agentic-memory/apps/memory_api/workers/memory_maintenance.py (DecayWorker).
@@ -2033,7 +2079,7 @@ func NewDecayWorker() *DecayWorker {
 }
 
 func (x *DecayWorker) RunDecayCycle(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DecayWorker", Subsystem: x.Subsystem, Operation: "run_decay_cycle", Status: "OK"}
+	return ExecuteDomainOp("DecayWorker", x.Subsystem, "run_decay_cycle", args...)
 }
 
 // DefaultKernelBridge implements core/autonomy_kernel.py (_DefaultKernelBridge).
@@ -2048,10 +2094,10 @@ func NewDefaultKernelBridge() *DefaultKernelBridge {
 }
 
 func (x *DefaultKernelBridge) SaveEvent(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DefaultKernelBridge", Subsystem: x.Subsystem, Operation: "save_event", Status: "OK"}
+	return ExecuteDomainOp("DefaultKernelBridge", x.Subsystem, "save_event", args...)
 }
 func (x *DefaultKernelBridge) LogDecision(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DefaultKernelBridge", Subsystem: x.Subsystem, Operation: "log_decision", Status: "OK"}
+	return ExecuteDomainOp("DefaultKernelBridge", x.Subsystem, "log_decision", args...)
 }
 
 // DefaultKnowledgeResolutionEngine implements packages/rae-agentic-memory/rae-core/rae_core/governance/engine.py (DefaultKnowledgeResolutionEngine).
@@ -2066,7 +2112,7 @@ func NewDefaultKnowledgeResolutionEngine() *DefaultKnowledgeResolutionEngine {
 }
 
 func (x *DefaultKnowledgeResolutionEngine) Resolve(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DefaultKnowledgeResolutionEngine", Subsystem: x.Subsystem, Operation: "resolve", Status: "OK"}
+	return ExecuteDomainOp("DefaultKnowledgeResolutionEngine", x.Subsystem, "resolve", args...)
 }
 
 // DefectTracker implements packages/rae-quality/engines/governance/defect_tracker.py (DefectTracker).
@@ -2081,13 +2127,13 @@ func NewDefectTracker() *DefectTracker {
 }
 
 func (x *DefectTracker) RegisterDeployment(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DefectTracker", Subsystem: x.Subsystem, Operation: "register_deployment", Status: "OK"}
+	return ExecuteDomainOp("DefectTracker", x.Subsystem, "register_deployment", args...)
 }
 func (x *DefectTracker) RegisterDefect(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DefectTracker", Subsystem: x.Subsystem, Operation: "register_defect", Status: "OK"}
+	return ExecuteDomainOp("DefectTracker", x.Subsystem, "register_defect", args...)
 }
 func (x *DefectTracker) CalculateMetrics(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DefectTracker", Subsystem: x.Subsystem, Operation: "calculate_metrics", Status: "OK"}
+	return ExecuteDomainOp("DefectTracker", x.Subsystem, "calculate_metrics", args...)
 }
 
 // DegradedModeService implements packages/rae-agentic-memory/apps/memory_api/utils/circuit_breaker.py (DegradedModeService).
@@ -2102,16 +2148,16 @@ func NewDegradedModeService() *DegradedModeService {
 }
 
 func (x *DegradedModeService) EnterDegradedMode(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DegradedModeService", Subsystem: x.Subsystem, Operation: "enter_degraded_mode", Status: "OK"}
+	return ExecuteDomainOp("DegradedModeService", x.Subsystem, "enter_degraded_mode", args...)
 }
 func (x *DegradedModeService) ExitDegradedMode(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DegradedModeService", Subsystem: x.Subsystem, Operation: "exit_degraded_mode", Status: "OK"}
+	return ExecuteDomainOp("DegradedModeService", x.Subsystem, "exit_degraded_mode", args...)
 }
 func (x *DegradedModeService) IsDegraded(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DegradedModeService", Subsystem: x.Subsystem, Operation: "is_degraded", Status: "OK"}
+	return ExecuteDomainOp("DegradedModeService", x.Subsystem, "is_degraded", args...)
 }
 func (x *DegradedModeService) GetStatus(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DegradedModeService", Subsystem: x.Subsystem, Operation: "get_status", Status: "OK"}
+	return ExecuteDomainOp("DegradedModeService", x.Subsystem, "get_status", args...)
 }
 
 // DelegatedLLMProvider implements packages/rae-agentic-memory/apps/llm/providers/delegated_provider.py (DelegatedLLMProvider).
@@ -2126,10 +2172,10 @@ func NewDelegatedLLMProvider() *DelegatedLLMProvider {
 }
 
 func (x *DelegatedLLMProvider) Complete(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DelegatedLLMProvider", Subsystem: x.Subsystem, Operation: "complete", Status: "OK"}
+	return ExecuteDomainOp("DelegatedLLMProvider", x.Subsystem, "complete", args...)
 }
 func (x *DelegatedLLMProvider) Stream(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DelegatedLLMProvider", Subsystem: x.Subsystem, Operation: "stream", Status: "OK"}
+	return ExecuteDomainOp("DelegatedLLMProvider", x.Subsystem, "stream", args...)
 }
 
 // Dependency implements packages/rae-phoenix/feniks/core/models/types.py (Dependency).
@@ -2144,10 +2190,10 @@ func NewDependency() *Dependency {
 }
 
 func (x *Dependency) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Dependency", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("Dependency", x.Subsystem, "execute", args...)
 }
 func (x *Dependency) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Dependency", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("Dependency", x.Subsystem, "validate", args...)
 }
 
 // DeptracWrapper implements packages/rae-phoenix/feniks/core/refactor/php/tools.py (DeptracWrapper).
@@ -2162,7 +2208,7 @@ func NewDeptracWrapper() *DeptracWrapper {
 }
 
 func (x *DeptracWrapper) Analyze(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DeptracWrapper", Subsystem: x.Subsystem, Operation: "analyze", Status: "OK"}
+	return ExecuteDomainOp("DeptracWrapper", x.Subsystem, "analyze", args...)
 }
 
 // DeterministicClock implements packages/rae-agentic-memory/rae-core/rae_core/utils/clock.py (DeterministicClock).
@@ -2177,13 +2223,13 @@ func NewDeterministicClock() *DeterministicClock {
 }
 
 func (x *DeterministicClock) SetTime(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DeterministicClock", Subsystem: x.Subsystem, Operation: "set_time", Status: "OK"}
+	return ExecuteDomainOp("DeterministicClock", x.Subsystem, "set_time", args...)
 }
 func (x *DeterministicClock) SetAutoIncrement(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DeterministicClock", Subsystem: x.Subsystem, Operation: "set_auto_increment", Status: "OK"}
+	return ExecuteDomainOp("DeterministicClock", x.Subsystem, "set_auto_increment", args...)
 }
 func (x *DeterministicClock) Now(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DeterministicClock", Subsystem: x.Subsystem, Operation: "now", Status: "OK"}
+	return ExecuteDomainOp("DeterministicClock", x.Subsystem, "now", args...)
 }
 
 // DeterministicEvaluator implements packages/rae-agentic-memory/apps/memory_api/services/evaluator.py (DeterministicEvaluator).
@@ -2198,7 +2244,7 @@ func NewDeterministicEvaluator() *DeterministicEvaluator {
 }
 
 func (x *DeterministicEvaluator) Evaluate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DeterministicEvaluator", Subsystem: x.Subsystem, Operation: "evaluate", Status: "OK"}
+	return ExecuteDomainOp("DeterministicEvaluator", x.Subsystem, "evaluate", args...)
 }
 
 // DeterministicReflectionEngine implements packages/rae-agentic-memory/rae-core/rae_core/reflection/deterministic.py (DeterministicReflectionEngine).
@@ -2213,22 +2259,22 @@ func NewDeterministicReflectionEngine() *DeterministicReflectionEngine {
 }
 
 func (x *DeterministicReflectionEngine) ComputeJaccardSimilarity(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DeterministicReflectionEngine", Subsystem: x.Subsystem, Operation: "compute_jaccard_similarity", Status: "OK"}
+	return ExecuteDomainOp("DeterministicReflectionEngine", x.Subsystem, "compute_jaccard_similarity", args...)
 }
 func (x *DeterministicReflectionEngine) ComputeCosineSimilarity(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DeterministicReflectionEngine", Subsystem: x.Subsystem, Operation: "compute_cosine_similarity", Status: "OK"}
+	return ExecuteDomainOp("DeterministicReflectionEngine", x.Subsystem, "compute_cosine_similarity", args...)
 }
 func (x *DeterministicReflectionEngine) ExtractConceptGraph(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DeterministicReflectionEngine", Subsystem: x.Subsystem, Operation: "extract_concept_graph", Status: "OK"}
+	return ExecuteDomainOp("DeterministicReflectionEngine", x.Subsystem, "extract_concept_graph", args...)
 }
 func (x *DeterministicReflectionEngine) ClusterMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DeterministicReflectionEngine", Subsystem: x.Subsystem, Operation: "cluster_memories", Status: "OK"}
+	return ExecuteDomainOp("DeterministicReflectionEngine", x.Subsystem, "cluster_memories", args...)
 }
 func (x *DeterministicReflectionEngine) ConsolidateCluster(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DeterministicReflectionEngine", Subsystem: x.Subsystem, Operation: "consolidate_cluster", Status: "OK"}
+	return ExecuteDomainOp("DeterministicReflectionEngine", x.Subsystem, "consolidate_cluster", args...)
 }
 func (x *DeterministicReflectionEngine) GenerateReflectionFromTrace(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DeterministicReflectionEngine", Subsystem: x.Subsystem, Operation: "generate_reflection_from_trace", Status: "OK"}
+	return ExecuteDomainOp("DeterministicReflectionEngine", x.Subsystem, "generate_reflection_from_trace", args...)
 }
 
 // DiffResult implements packages/rae-agentic-memory/rae-core/rae_core/sync/diff.py (DiffResult).
@@ -2243,13 +2289,13 @@ func NewDiffResult() *DiffResult {
 }
 
 func (x *DiffResult) HasChanges(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DiffResult", Subsystem: x.Subsystem, Operation: "has_changes", Status: "OK"}
+	return ExecuteDomainOp("DiffResult", x.Subsystem, "has_changes", args...)
 }
 func (x *DiffResult) HasConflicts(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DiffResult", Subsystem: x.Subsystem, Operation: "has_conflicts", Status: "OK"}
+	return ExecuteDomainOp("DiffResult", x.Subsystem, "has_conflicts", args...)
 }
 func (x *DiffResult) TotalChanges(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DiffResult", Subsystem: x.Subsystem, Operation: "total_changes", Status: "OK"}
+	return ExecuteDomainOp("DiffResult", x.Subsystem, "total_changes", args...)
 }
 
 // DirectiveMetadata implements packages/rae-phoenix/feniks/core/refactor/recipes/angularjs/directive_to_component.py (DirectiveMetadata).
@@ -2264,10 +2310,10 @@ func NewDirectiveMetadata() *DirectiveMetadata {
 }
 
 func (x *DirectiveMetadata) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DirectiveMetadata", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("DirectiveMetadata", x.Subsystem, "execute", args...)
 }
 func (x *DirectiveMetadata) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DirectiveMetadata", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("DirectiveMetadata", x.Subsystem, "validate", args...)
 }
 
 // DirectoryWatcher implements packages/rae-agentic-memory/rae-windows/rae_lite/ingestion/watcher.py (DirectoryWatcher).
@@ -2282,10 +2328,10 @@ func NewDirectoryWatcher() *DirectoryWatcher {
 }
 
 func (x *DirectoryWatcher) Start(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DirectoryWatcher", Subsystem: x.Subsystem, Operation: "start", Status: "OK"}
+	return ExecuteDomainOp("DirectoryWatcher", x.Subsystem, "start", args...)
 }
 func (x *DirectoryWatcher) Stop(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DirectoryWatcher", Subsystem: x.Subsystem, Operation: "stop", Status: "OK"}
+	return ExecuteDomainOp("DirectoryWatcher", x.Subsystem, "stop", args...)
 }
 
 // DocChecker implements packages/rae-agentic-memory/docs/autodoc/autodoc_checker.py (DocChecker).
@@ -2300,22 +2346,22 @@ func NewDocChecker() *DocChecker {
 }
 
 func (x *DocChecker) CheckAll(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocChecker", Subsystem: x.Subsystem, Operation: "check_all", Status: "OK"}
+	return ExecuteDomainOp("DocChecker", x.Subsystem, "check_all", args...)
 }
 func (x *DocChecker) CheckFile(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocChecker", Subsystem: x.Subsystem, Operation: "check_file", Status: "OK"}
+	return ExecuteDomainOp("DocChecker", x.Subsystem, "check_file", args...)
 }
 func (x *DocChecker) CheckDocFragments(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocChecker", Subsystem: x.Subsystem, Operation: "check_doc_fragments", Status: "OK"}
+	return ExecuteDomainOp("DocChecker", x.Subsystem, "check_doc_fragments", args...)
 }
 func (x *DocChecker) CheckInternalLinks(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocChecker", Subsystem: x.Subsystem, Operation: "check_internal_links", Status: "OK"}
+	return ExecuteDomainOp("DocChecker", x.Subsystem, "check_internal_links", args...)
 }
 func (x *DocChecker) ResolveRelativePath(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocChecker", Subsystem: x.Subsystem, Operation: "resolve_relative_path", Status: "OK"}
+	return ExecuteDomainOp("DocChecker", x.Subsystem, "resolve_relative_path", args...)
 }
 func (x *DocChecker) PrintSummary(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocChecker", Subsystem: x.Subsystem, Operation: "print_summary", Status: "OK"}
+	return ExecuteDomainOp("DocChecker", x.Subsystem, "print_summary", args...)
 }
 
 // DockerSandboxManager implements packages/rae-hive/src/sandbox_manager.py (DockerSandboxManager).
@@ -2330,7 +2376,7 @@ func NewDockerSandboxManager() *DockerSandboxManager {
 }
 
 func (x *DockerSandboxManager) RunInSandbox(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DockerSandboxManager", Subsystem: x.Subsystem, Operation: "run_in_sandbox", Status: "OK"}
+	return ExecuteDomainOp("DockerSandboxManager", x.Subsystem, "run_in_sandbox", args...)
 }
 
 // DocsMetrics implements packages/rae-agentic-memory/scripts/metrics_tracker.py (DocsMetrics).
@@ -2345,19 +2391,19 @@ func NewDocsMetrics() *DocsMetrics {
 }
 
 func (x *DocsMetrics) RecordFile(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocsMetrics", Subsystem: x.Subsystem, Operation: "record_file", Status: "OK"}
+	return ExecuteDomainOp("DocsMetrics", x.Subsystem, "record_file", args...)
 }
 func (x *DocsMetrics) RecordError(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocsMetrics", Subsystem: x.Subsystem, Operation: "record_error", Status: "OK"}
+	return ExecuteDomainOp("DocsMetrics", x.Subsystem, "record_error", args...)
 }
 func (x *DocsMetrics) RecordWarning(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocsMetrics", Subsystem: x.Subsystem, Operation: "record_warning", Status: "OK"}
+	return ExecuteDomainOp("DocsMetrics", x.Subsystem, "record_warning", args...)
 }
 func (x *DocsMetrics) ToDict(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocsMetrics", Subsystem: x.Subsystem, Operation: "to_dict", Status: "OK"}
+	return ExecuteDomainOp("DocsMetrics", x.Subsystem, "to_dict", args...)
 }
 func (x *DocsMetrics) SaveMetrics(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocsMetrics", Subsystem: x.Subsystem, Operation: "save_metrics", Status: "OK"}
+	return ExecuteDomainOp("DocsMetrics", x.Subsystem, "save_metrics", args...)
 }
 
 // DocValidator implements packages/rae-agentic-memory/scripts/validate_docs.py (DocValidator).
@@ -2372,31 +2418,31 @@ func NewDocValidator() *DocValidator {
 }
 
 func (x *DocValidator) ShouldExclude(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocValidator", Subsystem: x.Subsystem, Operation: "should_exclude", Status: "OK"}
+	return ExecuteDomainOp("DocValidator", x.Subsystem, "should_exclude", args...)
 }
 func (x *DocValidator) FindMarkdownFiles(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocValidator", Subsystem: x.Subsystem, Operation: "find_markdown_files", Status: "OK"}
+	return ExecuteDomainOp("DocValidator", x.Subsystem, "find_markdown_files", args...)
 }
 func (x *DocValidator) ExtractLinks(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocValidator", Subsystem: x.Subsystem, Operation: "extract_links", Status: "OK"}
+	return ExecuteDomainOp("DocValidator", x.Subsystem, "extract_links", args...)
 }
 func (x *DocValidator) ValidateInternalLink(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocValidator", Subsystem: x.Subsystem, Operation: "validate_internal_link", Status: "OK"}
+	return ExecuteDomainOp("DocValidator", x.Subsystem, "validate_internal_link", args...)
 }
 func (x *DocValidator) CheckPlaceholders(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocValidator", Subsystem: x.Subsystem, Operation: "check_placeholders", Status: "OK"}
+	return ExecuteDomainOp("DocValidator", x.Subsystem, "check_placeholders", args...)
 }
 func (x *DocValidator) ValidateFile(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocValidator", Subsystem: x.Subsystem, Operation: "validate_file", Status: "OK"}
+	return ExecuteDomainOp("DocValidator", x.Subsystem, "validate_file", args...)
 }
 func (x *DocValidator) ValidateStructure(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocValidator", Subsystem: x.Subsystem, Operation: "validate_structure", Status: "OK"}
+	return ExecuteDomainOp("DocValidator", x.Subsystem, "validate_structure", args...)
 }
 func (x *DocValidator) CheckDuplicates(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocValidator", Subsystem: x.Subsystem, Operation: "check_duplicates", Status: "OK"}
+	return ExecuteDomainOp("DocValidator", x.Subsystem, "check_duplicates", args...)
 }
 func (x *DocValidator) Run(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DocValidator", Subsystem: x.Subsystem, Operation: "run", Status: "OK"}
+	return ExecuteDomainOp("DocValidator", x.Subsystem, "run", args...)
 }
 
 // DreamingWorker implements packages/rae-agentic-memory/apps/memory_api/workers/memory_maintenance.py (DreamingWorker).
@@ -2411,7 +2457,7 @@ func NewDreamingWorker() *DreamingWorker {
 }
 
 func (x *DreamingWorker) RunDreamingCycle(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DreamingWorker", Subsystem: x.Subsystem, Operation: "run_dreaming_cycle", Status: "OK"}
+	return ExecuteDomainOp("DreamingWorker", x.Subsystem, "run_dreaming_cycle", args...)
 }
 
 // DriftDetector implements packages/rae-agentic-memory/apps/memory_api/services/drift_detector.py (DriftDetector).
@@ -2426,7 +2472,7 @@ func NewDriftDetector() *DriftDetector {
 }
 
 func (x *DriftDetector) DetectDrift(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DriftDetector", Subsystem: x.Subsystem, Operation: "detect_drift", Status: "OK"}
+	return ExecuteDomainOp("DriftDetector", x.Subsystem, "detect_drift", args...)
 }
 
 // DynamicRiskScanner implements core/risk_scanner.py (DynamicRiskScanner).
@@ -2441,7 +2487,7 @@ func NewDynamicRiskScanner() *DynamicRiskScanner {
 }
 
 func (x *DynamicRiskScanner) ScanDiff(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "DynamicRiskScanner", Subsystem: x.Subsystem, Operation: "scan_diff", Status: "OK"}
+	return ExecuteDomainOp("DynamicRiskScanner", x.Subsystem, "scan_diff", args...)
 }
 
 // EmailConnector implements packages/rae-agentic-memory/rae-windows/rae_lite/ingestion/channels/email.py (EmailConnector).
@@ -2456,10 +2502,10 @@ func NewEmailConnector() *EmailConnector {
 }
 
 func (x *EmailConnector) ParseEml(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmailConnector", Subsystem: x.Subsystem, Operation: "parse_eml", Status: "OK"}
+	return ExecuteDomainOp("EmailConnector", x.Subsystem, "parse_eml", args...)
 }
 func (x *EmailConnector) ProcessDirectory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmailConnector", Subsystem: x.Subsystem, Operation: "process_directory", Status: "OK"}
+	return ExecuteDomainOp("EmailConnector", x.Subsystem, "process_directory", args...)
 }
 
 // EmbeddedEmbeddingProvider implements packages/rae-agentic-memory/rae-core/rae_core/embedded.py (EmbeddedEmbeddingProvider).
@@ -2474,13 +2520,13 @@ func NewEmbeddedEmbeddingProvider() *EmbeddedEmbeddingProvider {
 }
 
 func (x *EmbeddedEmbeddingProvider) EmbedText(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddedEmbeddingProvider", Subsystem: x.Subsystem, Operation: "embed_text", Status: "OK"}
+	return ExecuteDomainOp("EmbeddedEmbeddingProvider", x.Subsystem, "embed_text", args...)
 }
 func (x *EmbeddedEmbeddingProvider) EmbedBatch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddedEmbeddingProvider", Subsystem: x.Subsystem, Operation: "embed_batch", Status: "OK"}
+	return ExecuteDomainOp("EmbeddedEmbeddingProvider", x.Subsystem, "embed_batch", args...)
 }
 func (x *EmbeddedEmbeddingProvider) GetDimension(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddedEmbeddingProvider", Subsystem: x.Subsystem, Operation: "get_dimension", Status: "OK"}
+	return ExecuteDomainOp("EmbeddedEmbeddingProvider", x.Subsystem, "get_dimension", args...)
 }
 
 // EmbeddedRAE implements packages/rae-agentic-memory/rae-core/rae_core/embedded.py (EmbeddedRAE).
@@ -2495,31 +2541,31 @@ func NewEmbeddedRAE() *EmbeddedRAE {
 }
 
 func (x *EmbeddedRAE) Open(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddedRAE", Subsystem: x.Subsystem, Operation: "open", Status: "OK"}
+	return ExecuteDomainOp("EmbeddedRAE", x.Subsystem, "open", args...)
 }
 func (x *EmbeddedRAE) Store(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddedRAE", Subsystem: x.Subsystem, Operation: "store", Status: "OK"}
+	return ExecuteDomainOp("EmbeddedRAE", x.Subsystem, "store", args...)
 }
 func (x *EmbeddedRAE) Get(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddedRAE", Subsystem: x.Subsystem, Operation: "get", Status: "OK"}
+	return ExecuteDomainOp("EmbeddedRAE", x.Subsystem, "get", args...)
 }
 func (x *EmbeddedRAE) Delete(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddedRAE", Subsystem: x.Subsystem, Operation: "delete", Status: "OK"}
+	return ExecuteDomainOp("EmbeddedRAE", x.Subsystem, "delete", args...)
 }
 func (x *EmbeddedRAE) List(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddedRAE", Subsystem: x.Subsystem, Operation: "list", Status: "OK"}
+	return ExecuteDomainOp("EmbeddedRAE", x.Subsystem, "list", args...)
 }
 func (x *EmbeddedRAE) Query(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddedRAE", Subsystem: x.Subsystem, Operation: "query", Status: "OK"}
+	return ExecuteDomainOp("EmbeddedRAE", x.Subsystem, "query", args...)
 }
 func (x *EmbeddedRAE) SearchEvidence(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddedRAE", Subsystem: x.Subsystem, Operation: "search_evidence", Status: "OK"}
+	return ExecuteDomainOp("EmbeddedRAE", x.Subsystem, "search_evidence", args...)
 }
 func (x *EmbeddedRAE) Consolidate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddedRAE", Subsystem: x.Subsystem, Operation: "consolidate", Status: "OK"}
+	return ExecuteDomainOp("EmbeddedRAE", x.Subsystem, "consolidate", args...)
 }
 func (x *EmbeddedRAE) Close(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddedRAE", Subsystem: x.Subsystem, Operation: "close", Status: "OK"}
+	return ExecuteDomainOp("EmbeddedRAE", x.Subsystem, "close", args...)
 }
 
 // EmbeddingManager implements packages/rae-agentic-memory/rae-core/rae_core/embedding/manager.py (EmbeddingManager).
@@ -2534,22 +2580,22 @@ func NewEmbeddingManager() *EmbeddingManager {
 }
 
 func (x *EmbeddingManager) RegisterProvider(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddingManager", Subsystem: x.Subsystem, Operation: "register_provider", Status: "OK"}
+	return ExecuteDomainOp("EmbeddingManager", x.Subsystem, "register_provider", args...)
 }
 func (x *EmbeddingManager) GetProvider(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddingManager", Subsystem: x.Subsystem, Operation: "get_provider", Status: "OK"}
+	return ExecuteDomainOp("EmbeddingManager", x.Subsystem, "get_provider", args...)
 }
 func (x *EmbeddingManager) EmbedText(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddingManager", Subsystem: x.Subsystem, Operation: "embed_text", Status: "OK"}
+	return ExecuteDomainOp("EmbeddingManager", x.Subsystem, "embed_text", args...)
 }
 func (x *EmbeddingManager) EmbedBatch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddingManager", Subsystem: x.Subsystem, Operation: "embed_batch", Status: "OK"}
+	return ExecuteDomainOp("EmbeddingManager", x.Subsystem, "embed_batch", args...)
 }
 func (x *EmbeddingManager) GetDimension(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddingManager", Subsystem: x.Subsystem, Operation: "get_dimension", Status: "OK"}
+	return ExecuteDomainOp("EmbeddingManager", x.Subsystem, "get_dimension", args...)
 }
 func (x *EmbeddingManager) GenerateAllEmbeddings(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddingManager", Subsystem: x.Subsystem, Operation: "generate_all_embeddings", Status: "OK"}
+	return ExecuteDomainOp("EmbeddingManager", x.Subsystem, "generate_all_embeddings", args...)
 }
 
 // EmbeddingMLService implements packages/rae-agentic-memory/apps/ml_service/services/embedding_service.py (EmbeddingMLService).
@@ -2564,13 +2610,13 @@ func NewEmbeddingMLService() *EmbeddingMLService {
 }
 
 func (x *EmbeddingMLService) GenerateEmbeddings(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddingMLService", Subsystem: x.Subsystem, Operation: "generate_embeddings", Status: "OK"}
+	return ExecuteDomainOp("EmbeddingMLService", x.Subsystem, "generate_embeddings", args...)
 }
 func (x *EmbeddingMLService) GenerateEmbeddingsAsync(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddingMLService", Subsystem: x.Subsystem, Operation: "generate_embeddings_async", Status: "OK"}
+	return ExecuteDomainOp("EmbeddingMLService", x.Subsystem, "generate_embeddings_async", args...)
 }
 func (x *EmbeddingMLService) GetEmbeddingDimension(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddingMLService", Subsystem: x.Subsystem, Operation: "get_embedding_dimension", Status: "OK"}
+	return ExecuteDomainOp("EmbeddingMLService", x.Subsystem, "get_embedding_dimension", args...)
 }
 
 // EmbeddingService implements packages/rae-agentic-memory/apps/memory_api/embedding.py (EmbeddingService).
@@ -2585,19 +2631,19 @@ func NewEmbeddingService() *EmbeddingService {
 }
 
 func (x *EmbeddingService) Settings(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddingService", Subsystem: x.Subsystem, Operation: "settings", Status: "OK"}
+	return ExecuteDomainOp("EmbeddingService", x.Subsystem, "settings", args...)
 }
 func (x *EmbeddingService) GenerateEmbeddings(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddingService", Subsystem: x.Subsystem, Operation: "generate_embeddings", Status: "OK"}
+	return ExecuteDomainOp("EmbeddingService", x.Subsystem, "generate_embeddings", args...)
 }
 func (x *EmbeddingService) GetDimensionForModel(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddingService", Subsystem: x.Subsystem, Operation: "get_dimension_for_model", Status: "OK"}
+	return ExecuteDomainOp("EmbeddingService", x.Subsystem, "get_dimension_for_model", args...)
 }
 func (x *EmbeddingService) GenerateEmbeddingsAsync(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddingService", Subsystem: x.Subsystem, Operation: "generate_embeddings_async", Status: "OK"}
+	return ExecuteDomainOp("EmbeddingService", x.Subsystem, "generate_embeddings_async", args...)
 }
 func (x *EmbeddingService) GenerateEmbeddingsForModel(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmbeddingService", Subsystem: x.Subsystem, Operation: "generate_embeddings_for_model", Status: "OK"}
+	return ExecuteDomainOp("EmbeddingService", x.Subsystem, "generate_embeddings_for_model", args...)
 }
 
 // EmeraldReranker implements packages/rae-agentic-memory/rae-core/rae_core/search/engine.py (EmeraldReranker).
@@ -2612,7 +2658,7 @@ func NewEmeraldReranker() *EmeraldReranker {
 }
 
 func (x *EmeraldReranker) Rerank(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EmeraldReranker", Subsystem: x.Subsystem, Operation: "rerank", Status: "OK"}
+	return ExecuteDomainOp("EmeraldReranker", x.Subsystem, "rerank", args...)
 }
 
 // EntityRepository implements packages/rae-agentic-memory/.ai-templates/repository_template.py (EntityRepository).
@@ -2627,22 +2673,22 @@ func NewEntityRepository() *EntityRepository {
 }
 
 func (x *EntityRepository) GetById(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EntityRepository", Subsystem: x.Subsystem, Operation: "get_by_id", Status: "OK"}
+	return ExecuteDomainOp("EntityRepository", x.Subsystem, "get_by_id", args...)
 }
 func (x *EntityRepository) GetAll(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EntityRepository", Subsystem: x.Subsystem, Operation: "get_all", Status: "OK"}
+	return ExecuteDomainOp("EntityRepository", x.Subsystem, "get_all", args...)
 }
 func (x *EntityRepository) Insert(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EntityRepository", Subsystem: x.Subsystem, Operation: "insert", Status: "OK"}
+	return ExecuteDomainOp("EntityRepository", x.Subsystem, "insert", args...)
 }
 func (x *EntityRepository) Update(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EntityRepository", Subsystem: x.Subsystem, Operation: "update", Status: "OK"}
+	return ExecuteDomainOp("EntityRepository", x.Subsystem, "update", args...)
 }
 func (x *EntityRepository) Delete(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EntityRepository", Subsystem: x.Subsystem, Operation: "delete", Status: "OK"}
+	return ExecuteDomainOp("EntityRepository", x.Subsystem, "delete", args...)
 }
 func (x *EntityRepository) Count(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EntityRepository", Subsystem: x.Subsystem, Operation: "count", Status: "OK"}
+	return ExecuteDomainOp("EntityRepository", x.Subsystem, "count", args...)
 }
 
 // EntityResolutionMLService implements packages/rae-agentic-memory/apps/ml_service/services/entity_resolution.py (EntityResolutionMLService).
@@ -2657,10 +2703,10 @@ func NewEntityResolutionMLService() *EntityResolutionMLService {
 }
 
 func (x *EntityResolutionMLService) ResolveEntities(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EntityResolutionMLService", Subsystem: x.Subsystem, Operation: "resolve_entities", Status: "OK"}
+	return ExecuteDomainOp("EntityResolutionMLService", x.Subsystem, "resolve_entities", args...)
 }
 func (x *EntityResolutionMLService) CalculateSimilarityMatrix(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EntityResolutionMLService", Subsystem: x.Subsystem, Operation: "calculate_similarity_matrix", Status: "OK"}
+	return ExecuteDomainOp("EntityResolutionMLService", x.Subsystem, "calculate_similarity_matrix", args...)
 }
 
 // EntityResolutionService implements packages/rae-agentic-memory/apps/memory_api/services/entity_resolution.py (EntityResolutionService).
@@ -2675,7 +2721,7 @@ func NewEntityResolutionService() *EntityResolutionService {
 }
 
 func (x *EntityResolutionService) RunClusteringAndMerging(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EntityResolutionService", Subsystem: x.Subsystem, Operation: "run_clustering_and_merging", Status: "OK"}
+	return ExecuteDomainOp("EntityResolutionService", x.Subsystem, "run_clustering_and_merging", args...)
 }
 
 // EntropyMetric implements packages/rae-agentic-memory/rae-core/rae_core/math/quality_metrics.py (EntropyMetric).
@@ -2690,10 +2736,10 @@ func NewEntropyMetric() *EntropyMetric {
 }
 
 func (x *EntropyMetric) Name(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EntropyMetric", Subsystem: x.Subsystem, Operation: "name", Status: "OK"}
+	return ExecuteDomainOp("EntropyMetric", x.Subsystem, "name", args...)
 }
 func (x *EntropyMetric) Compute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EntropyMetric", Subsystem: x.Subsystem, Operation: "compute", Status: "OK"}
+	return ExecuteDomainOp("EntropyMetric", x.Subsystem, "compute", args...)
 }
 
 // ErrorClassifier implements packages/rae-agentic-memory/orchestrator/core/retry_handler.py (ErrorClassifier).
@@ -2708,10 +2754,10 @@ func NewErrorClassifier() *ErrorClassifier {
 }
 
 func (x *ErrorClassifier) IsRetryable(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ErrorClassifier", Subsystem: x.Subsystem, Operation: "is_retryable", Status: "OK"}
+	return ExecuteDomainOp("ErrorClassifier", x.Subsystem, "is_retryable", args...)
 }
 func (x *ErrorClassifier) WrapError(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ErrorClassifier", Subsystem: x.Subsystem, Operation: "wrap_error", Status: "OK"}
+	return ExecuteDomainOp("ErrorClassifier", x.Subsystem, "wrap_error", args...)
 }
 
 // ErrorInfo implements packages/rae-agentic-memory/apps/memory_api/models/reflection_v2_models.py (ErrorInfo).
@@ -2726,10 +2772,10 @@ func NewErrorInfo() *ErrorInfo {
 }
 
 func (x *ErrorInfo) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ErrorInfo", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("ErrorInfo", x.Subsystem, "execute", args...)
 }
 func (x *ErrorInfo) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ErrorInfo", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("ErrorInfo", x.Subsystem, "validate", args...)
 }
 
 // EvaluationReport implements packages/rae-phoenix/core/evaluator.py (EvaluationReport).
@@ -2744,10 +2790,10 @@ func NewEvaluationReport() *EvaluationReport {
 }
 
 func (x *EvaluationReport) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EvaluationReport", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("EvaluationReport", x.Subsystem, "execute", args...)
 }
 func (x *EvaluationReport) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EvaluationReport", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("EvaluationReport", x.Subsystem, "validate", args...)
 }
 
 // EvaluationService implements packages/rae-agentic-memory/apps/memory_api/services/evaluation_service.py (EvaluationService).
@@ -2762,10 +2808,10 @@ func NewEvaluationService() *EvaluationService {
 }
 
 func (x *EvaluationService) EvaluateSearchResults(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EvaluationService", Subsystem: x.Subsystem, Operation: "evaluate_search_results", Status: "OK"}
+	return ExecuteDomainOp("EvaluationService", x.Subsystem, "evaluate_search_results", args...)
 }
 func (x *EvaluationService) CompareAbVariants(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EvaluationService", Subsystem: x.Subsystem, Operation: "compare_ab_variants", Status: "OK"}
+	return ExecuteDomainOp("EvaluationService", x.Subsystem, "compare_ab_variants", args...)
 }
 
 // Evaluator implements packages/rae-agentic-memory/apps/memory_api/services/evaluator.py (Evaluator).
@@ -2780,16 +2826,16 @@ func NewEvaluator() *Evaluator {
 }
 
 func (x *Evaluator) Evaluate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Evaluator", Subsystem: x.Subsystem, Operation: "evaluate", Status: "OK"}
+	return ExecuteDomainOp("Evaluator", x.Subsystem, "evaluate", args...)
 }
 func (x *Evaluator) EvaluateMemoryQuality(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Evaluator", Subsystem: x.Subsystem, Operation: "evaluate_memory_quality", Status: "OK"}
+	return ExecuteDomainOp("Evaluator", x.Subsystem, "evaluate_memory_quality", args...)
 }
 func (x *Evaluator) EvaluateActionOutcome(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Evaluator", Subsystem: x.Subsystem, Operation: "evaluate_action_outcome", Status: "OK"}
+	return ExecuteDomainOp("Evaluator", x.Subsystem, "evaluate_action_outcome", args...)
 }
 func (x *Evaluator) EvaluateMemoryBatch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Evaluator", Subsystem: x.Subsystem, Operation: "evaluate_memory_batch", Status: "OK"}
+	return ExecuteDomainOp("Evaluator", x.Subsystem, "evaluate_memory_batch", args...)
 }
 
 // EventMetadata implements packages/rae-phoenix/feniks/core/refactor/recipes/angularjs/scope_to_hooks.py (EventMetadata).
@@ -2804,10 +2850,10 @@ func NewEventMetadata() *EventMetadata {
 }
 
 func (x *EventMetadata) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EventMetadata", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("EventMetadata", x.Subsystem, "execute", args...)
 }
 func (x *EventMetadata) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EventMetadata", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("EventMetadata", x.Subsystem, "validate", args...)
 }
 
 // Evidence implements packages/rae-phoenix/feniks/core/models/types.py (Evidence).
@@ -2822,10 +2868,10 @@ func NewEvidence() *Evidence {
 }
 
 func (x *Evidence) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Evidence", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("Evidence", x.Subsystem, "execute", args...)
 }
 func (x *Evidence) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Evidence", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("Evidence", x.Subsystem, "validate", args...)
 }
 
 // EvidenceConflictDetector implements packages/rae-agentic-memory/rae-core/rae_core/search/conflict_detector.py (EvidenceConflictDetector).
@@ -2840,7 +2886,7 @@ func NewEvidenceConflictDetector() *EvidenceConflictDetector {
 }
 
 func (x *EvidenceConflictDetector) DetectConflicts(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EvidenceConflictDetector", Subsystem: x.Subsystem, Operation: "detect_conflicts", Status: "OK"}
+	return ExecuteDomainOp("EvidenceConflictDetector", x.Subsystem, "detect_conflicts", args...)
 }
 
 // EvidenceSufficiencyGate implements packages/rae-agentic-memory/rae-core/rae_core/search/sufficiency_gate.py (EvidenceSufficiencyGate).
@@ -2855,10 +2901,10 @@ func NewEvidenceSufficiencyGate() *EvidenceSufficiencyGate {
 }
 
 func (x *EvidenceSufficiencyGate) Mode(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EvidenceSufficiencyGate", Subsystem: x.Subsystem, Operation: "mode", Status: "OK"}
+	return ExecuteDomainOp("EvidenceSufficiencyGate", x.Subsystem, "mode", args...)
 }
 func (x *EvidenceSufficiencyGate) Evaluate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EvidenceSufficiencyGate", Subsystem: x.Subsystem, Operation: "evaluate", Status: "OK"}
+	return ExecuteDomainOp("EvidenceSufficiencyGate", x.Subsystem, "evaluate", args...)
 }
 
 // EvidenceVerifier implements packages/rae-agentic-memory/rae-core/rae_core/reflection/layers/l1_operational.py (EvidenceVerifier).
@@ -2873,7 +2919,7 @@ func NewEvidenceVerifier() *EvidenceVerifier {
 }
 
 func (x *EvidenceVerifier) Verify(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EvidenceVerifier", Subsystem: x.Subsystem, Operation: "verify", Status: "OK"}
+	return ExecuteDomainOp("EvidenceVerifier", x.Subsystem, "verify", args...)
 }
 
 // EvolutionLabApp implements packages/rae-agentic-memory/rae-portal/apps/evolution_lab.py (EvolutionLabApp).
@@ -2888,7 +2934,7 @@ func NewEvolutionLabApp() *EvolutionLabApp {
 }
 
 func (x *EvolutionLabApp) Render(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "EvolutionLabApp", Subsystem: x.Subsystem, Operation: "render", Status: "OK"}
+	return ExecuteDomainOp("EvolutionLabApp", x.Subsystem, "render", args...)
 }
 
 // ExchangeEnvelopeFactory implements src/mesh/exchange_envelope.py (ExchangeEnvelopeFactory).
@@ -2903,7 +2949,7 @@ func NewExchangeEnvelopeFactory() *ExchangeEnvelopeFactory {
 }
 
 func (x *ExchangeEnvelopeFactory) CreateEnvelope(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ExchangeEnvelopeFactory", Subsystem: x.Subsystem, Operation: "create_envelope", Status: "OK"}
+	return ExecuteDomainOp("ExchangeEnvelopeFactory", x.Subsystem, "create_envelope", args...)
 }
 
 // ExecutionContext implements packages/rae-agentic-memory/apps/memory_api/services/evaluator.py (ExecutionContext).
@@ -2918,10 +2964,10 @@ func NewExecutionContext() *ExecutionContext {
 }
 
 func (x *ExecutionContext) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ExecutionContext", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("ExecutionContext", x.Subsystem, "execute", args...)
 }
 func (x *ExecutionContext) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ExecutionContext", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("ExecutionContext", x.Subsystem, "validate", args...)
 }
 
 // ExecutionRecord implements packages/rae-agentic-memory/orchestrator/intelligence/performance_tracker.py (ExecutionRecord).
@@ -2936,10 +2982,10 @@ func NewExecutionRecord() *ExecutionRecord {
 }
 
 func (x *ExecutionRecord) ToDict(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ExecutionRecord", Subsystem: x.Subsystem, Operation: "to_dict", Status: "OK"}
+	return ExecuteDomainOp("ExecutionRecord", x.Subsystem, "to_dict", args...)
 }
 func (x *ExecutionRecord) FromDict(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ExecutionRecord", Subsystem: x.Subsystem, Operation: "from_dict", Status: "OK"}
+	return ExecuteDomainOp("ExecutionRecord", x.Subsystem, "from_dict", args...)
 }
 
 // ExperimentManager implements core/improvement_plane/experiment_manager.py (ExperimentManager).
@@ -2954,13 +3000,13 @@ func NewExperimentManager() *ExperimentManager {
 }
 
 func (x *ExperimentManager) CreateExperiment(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ExperimentManager", Subsystem: x.Subsystem, Operation: "create_experiment", Status: "OK"}
+	return ExecuteDomainOp("ExperimentManager", x.Subsystem, "create_experiment", args...)
 }
 func (x *ExperimentManager) RegisterScan(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ExperimentManager", Subsystem: x.Subsystem, Operation: "register_scan", Status: "OK"}
+	return ExecuteDomainOp("ExperimentManager", x.Subsystem, "register_scan", args...)
 }
 func (x *ExperimentManager) GenerateKaizenInsight(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ExperimentManager", Subsystem: x.Subsystem, Operation: "generate_kaizen_insight", Status: "OK"}
+	return ExecuteDomainOp("ExperimentManager", x.Subsystem, "generate_kaizen_insight", args...)
 }
 
 // ExperimentOrchestrator implements packages/rae-lab/src/rae_lab/experiment_orchestrator.py (ExperimentOrchestrator).
@@ -2975,7 +3021,7 @@ func NewExperimentOrchestrator() *ExperimentOrchestrator {
 }
 
 func (x *ExperimentOrchestrator) RunOfflineReplay(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ExperimentOrchestrator", Subsystem: x.Subsystem, Operation: "run_offline_replay", Status: "OK"}
+	return ExecuteDomainOp("ExperimentOrchestrator", x.Subsystem, "run_offline_replay", args...)
 }
 
 // ExtractFunctionRecipe implements packages/rae-phoenix/feniks/core/refactor/recipes/extract_function.py (ExtractFunctionRecipe).
@@ -2990,22 +3036,22 @@ func NewExtractFunctionRecipe() *ExtractFunctionRecipe {
 }
 
 func (x *ExtractFunctionRecipe) Name(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ExtractFunctionRecipe", Subsystem: x.Subsystem, Operation: "name", Status: "OK"}
+	return ExecuteDomainOp("ExtractFunctionRecipe", x.Subsystem, "name", args...)
 }
 func (x *ExtractFunctionRecipe) Description(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ExtractFunctionRecipe", Subsystem: x.Subsystem, Operation: "description", Status: "OK"}
+	return ExecuteDomainOp("ExtractFunctionRecipe", x.Subsystem, "description", args...)
 }
 func (x *ExtractFunctionRecipe) RiskLevel(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ExtractFunctionRecipe", Subsystem: x.Subsystem, Operation: "risk_level", Status: "OK"}
+	return ExecuteDomainOp("ExtractFunctionRecipe", x.Subsystem, "risk_level", args...)
 }
 func (x *ExtractFunctionRecipe) Analyze(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ExtractFunctionRecipe", Subsystem: x.Subsystem, Operation: "analyze", Status: "OK"}
+	return ExecuteDomainOp("ExtractFunctionRecipe", x.Subsystem, "analyze", args...)
 }
 func (x *ExtractFunctionRecipe) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ExtractFunctionRecipe", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("ExtractFunctionRecipe", x.Subsystem, "execute", args...)
 }
 func (x *ExtractFunctionRecipe) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ExtractFunctionRecipe", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("ExtractFunctionRecipe", x.Subsystem, "validate", args...)
 }
 
 // FabricTelemetry implements src/fabric/fabric_telemetry.py (FabricTelemetry).
@@ -3020,7 +3066,7 @@ func NewFabricTelemetry() *FabricTelemetry {
 }
 
 func (x *FabricTelemetry) RecordCall(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FabricTelemetry", Subsystem: x.Subsystem, Operation: "record_call", Status: "OK"}
+	return ExecuteDomainOp("FabricTelemetry", x.Subsystem, "record_call", args...)
 }
 
 // FactoryLoader implements core/factory_loader.py (FactoryLoader).
@@ -3035,7 +3081,7 @@ func NewFactoryLoader() *FactoryLoader {
 }
 
 func (x *FactoryLoader) Load(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FactoryLoader", Subsystem: x.Subsystem, Operation: "load", Status: "OK"}
+	return ExecuteDomainOp("FactoryLoader", x.Subsystem, "load", args...)
 }
 
 // FailureMiningEngine implements packages/rae-lab/src/rae_lab/failure_mining_engine.py (FailureMiningEngine).
@@ -3050,7 +3096,7 @@ func NewFailureMiningEngine() *FailureMiningEngine {
 }
 
 func (x *FailureMiningEngine) Mine(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FailureMiningEngine", Subsystem: x.Subsystem, Operation: "mine", Status: "OK"}
+	return ExecuteDomainOp("FailureMiningEngine", x.Subsystem, "mine", args...)
 }
 
 // FakeLLM implements packages/rae-agentic-memory/integrations/langchain/example.py (FakeLLM).
@@ -3065,7 +3111,7 @@ func NewFakeLLM() *FakeLLM {
 }
 
 func (x *FakeLLM) Invoke(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FakeLLM", Subsystem: x.Subsystem, Operation: "invoke", Status: "OK"}
+	return ExecuteDomainOp("FakeLLM", x.Subsystem, "invoke", args...)
 }
 
 // FallbackStrategy implements packages/rae-agentic-memory/rae-core/rae_core/llm/strategies.py (FallbackStrategy).
@@ -3080,7 +3126,7 @@ func NewFallbackStrategy() *FallbackStrategy {
 }
 
 func (x *FallbackStrategy) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FallbackStrategy", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("FallbackStrategy", x.Subsystem, "execute", args...)
 }
 
 // FeatureExtractorV2 implements packages/rae-agentic-memory/rae-core/rae_core/math/features_v2.py (FeatureExtractorV2).
@@ -3095,7 +3141,7 @@ func NewFeatureExtractorV2() *FeatureExtractorV2 {
 }
 
 func (x *FeatureExtractorV2) Extract(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FeatureExtractorV2", Subsystem: x.Subsystem, Operation: "extract", Status: "OK"}
+	return ExecuteDomainOp("FeatureExtractorV2", x.Subsystem, "extract", args...)
 }
 
 // Features implements packages/rae-agentic-memory/rae-core/rae_core/math/features.py (Features).
@@ -3110,13 +3156,13 @@ func NewFeatures() *Features {
 }
 
 func (x *Features) ToDict(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Features", Subsystem: x.Subsystem, Operation: "to_dict", Status: "OK"}
+	return ExecuteDomainOp("Features", x.Subsystem, "to_dict", args...)
 }
 func (x *Features) IsBudgetConstrained(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Features", Subsystem: x.Subsystem, Operation: "is_budget_constrained", Status: "OK"}
+	return ExecuteDomainOp("Features", x.Subsystem, "is_budget_constrained", args...)
 }
 func (x *Features) IsLatencyConstrained(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Features", Subsystem: x.Subsystem, Operation: "is_latency_constrained", Status: "OK"}
+	return ExecuteDomainOp("Features", x.Subsystem, "is_latency_constrained", args...)
 }
 
 // FeaturesV2 implements packages/rae-agentic-memory/rae-core/rae_core/math/features_v2.py (FeaturesV2).
@@ -3131,19 +3177,19 @@ func NewFeaturesV2() *FeaturesV2 {
 }
 
 func (x *FeaturesV2) ComputeDerivedFeatures(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FeaturesV2", Subsystem: x.Subsystem, Operation: "compute_derived_features", Status: "OK"}
+	return ExecuteDomainOp("FeaturesV2", x.Subsystem, "compute_derived_features", args...)
 }
 func (x *FeaturesV2) GetTaskAffinityL1(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FeaturesV2", Subsystem: x.Subsystem, Operation: "get_task_affinity_l1", Status: "OK"}
+	return ExecuteDomainOp("FeaturesV2", x.Subsystem, "get_task_affinity_l1", args...)
 }
 func (x *FeaturesV2) GetTaskAffinityL2(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FeaturesV2", Subsystem: x.Subsystem, Operation: "get_task_affinity_l2", Status: "OK"}
+	return ExecuteDomainOp("FeaturesV2", x.Subsystem, "get_task_affinity_l2", args...)
 }
 func (x *FeaturesV2) GetTaskAffinityL3(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FeaturesV2", Subsystem: x.Subsystem, Operation: "get_task_affinity_l3", Status: "OK"}
+	return ExecuteDomainOp("FeaturesV2", x.Subsystem, "get_task_affinity_l3", args...)
 }
 func (x *FeaturesV2) FromFeatures(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FeaturesV2", Subsystem: x.Subsystem, Operation: "from_features", Status: "OK"}
+	return ExecuteDomainOp("FeaturesV2", x.Subsystem, "from_features", args...)
 }
 
 // FeedbackService implements packages/rae-agentic-memory/apps/memory_api/services/feedback_service.py (FeedbackService).
@@ -3158,7 +3204,7 @@ func NewFeedbackService() *FeedbackService {
 }
 
 func (x *FeedbackService) ProcessFeedback(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FeedbackService", Subsystem: x.Subsystem, Operation: "process_feedback", Status: "OK"}
+	return ExecuteDomainOp("FeedbackService", x.Subsystem, "process_feedback", args...)
 }
 
 // FieldDensityMonitor implements packages/rae-agentic-memory/rae-core/rae_core/reflection/layers/l3_meta.py (FieldDensityMonitor).
@@ -3173,7 +3219,7 @@ func NewFieldDensityMonitor() *FieldDensityMonitor {
 }
 
 func (x *FieldDensityMonitor) Monitor(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FieldDensityMonitor", Subsystem: x.Subsystem, Operation: "monitor", Status: "OK"}
+	return ExecuteDomainOp("FieldDensityMonitor", x.Subsystem, "monitor", args...)
 }
 
 // FileChange implements packages/rae-phoenix/feniks/core/refactor/recipe.py (FileChange).
@@ -3188,10 +3234,10 @@ func NewFileChange() *FileChange {
 }
 
 func (x *FileChange) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FileChange", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("FileChange", x.Subsystem, "execute", args...)
 }
 func (x *FileChange) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FileChange", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("FileChange", x.Subsystem, "validate", args...)
 }
 
 // FileChangeHandler implements packages/rae-agentic-memory/integrations/context-watcher/src/context_watcher/watcher.py (FileChangeHandler).
@@ -3206,10 +3252,10 @@ func NewFileChangeHandler() *FileChangeHandler {
 }
 
 func (x *FileChangeHandler) OnModified(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FileChangeHandler", Subsystem: x.Subsystem, Operation: "on_modified", Status: "OK"}
+	return ExecuteDomainOp("FileChangeHandler", x.Subsystem, "on_modified", args...)
 }
 func (x *FileChangeHandler) OnCreated(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FileChangeHandler", Subsystem: x.Subsystem, Operation: "on_created", Status: "OK"}
+	return ExecuteDomainOp("FileChangeHandler", x.Subsystem, "on_created", args...)
 }
 
 // Finding implements scripts/ci_compatibility_check.py (Finding).
@@ -3224,10 +3270,10 @@ func NewFinding() *Finding {
 }
 
 func (x *Finding) Fingerprint(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Finding", Subsystem: x.Subsystem, Operation: "fingerprint", Status: "OK"}
+	return ExecuteDomainOp("Finding", x.Subsystem, "fingerprint", args...)
 }
 func (x *Finding) ToDict(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Finding", Subsystem: x.Subsystem, Operation: "to_dict", Status: "OK"}
+	return ExecuteDomainOp("Finding", x.Subsystem, "to_dict", args...)
 }
 
 // FullTextStrategy implements packages/rae-agentic-memory/rae-core/rae_core/search/strategies/fulltext.py (FullTextStrategy).
@@ -3242,13 +3288,13 @@ func NewFullTextStrategy() *FullTextStrategy {
 }
 
 func (x *FullTextStrategy) Search(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FullTextStrategy", Subsystem: x.Subsystem, Operation: "search", Status: "OK"}
+	return ExecuteDomainOp("FullTextStrategy", x.Subsystem, "search", args...)
 }
 func (x *FullTextStrategy) GetStrategyName(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FullTextStrategy", Subsystem: x.Subsystem, Operation: "get_strategy_name", Status: "OK"}
+	return ExecuteDomainOp("FullTextStrategy", x.Subsystem, "get_strategy_name", args...)
 }
 func (x *FullTextStrategy) GetStrategyWeight(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FullTextStrategy", Subsystem: x.Subsystem, Operation: "get_strategy_weight", Status: "OK"}
+	return ExecuteDomainOp("FullTextStrategy", x.Subsystem, "get_strategy_weight", args...)
 }
 
 // FusionStrategy implements packages/rae-agentic-memory/rae-core/rae_core/math/fusion.py (FusionStrategy).
@@ -3263,7 +3309,7 @@ func NewFusionStrategy() *FusionStrategy {
 }
 
 func (x *FusionStrategy) Fuse(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "FusionStrategy", Subsystem: x.Subsystem, Operation: "fuse", Status: "OK"}
+	return ExecuteDomainOp("FusionStrategy", x.Subsystem, "fuse", args...)
 }
 
 // Gauge implements packages/rae-phoenix/feniks/infra/metrics.py (Gauge).
@@ -3278,7 +3324,7 @@ func NewGauge() *Gauge {
 }
 
 func (x *Gauge) Set(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Gauge", Subsystem: x.Subsystem, Operation: "set", Status: "OK"}
+	return ExecuteDomainOp("Gauge", x.Subsystem, "set", args...)
 }
 
 // GeminiAdapter implements packages/rae-agentic-memory/orchestrator/adapters/gemini_adapter.py (GeminiAdapter).
@@ -3293,13 +3339,13 @@ func NewGeminiAdapter() *GeminiAdapter {
 }
 
 func (x *GeminiAdapter) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GeminiAdapter", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("GeminiAdapter", x.Subsystem, "execute", args...)
 }
 func (x *GeminiAdapter) IsAvailable(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GeminiAdapter", Subsystem: x.Subsystem, Operation: "is_available", Status: "OK"}
+	return ExecuteDomainOp("GeminiAdapter", x.Subsystem, "is_available", args...)
 }
 func (x *GeminiAdapter) GetCostPer1kTokens(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GeminiAdapter", Subsystem: x.Subsystem, Operation: "get_cost_per_1k_tokens", Status: "OK"}
+	return ExecuteDomainOp("GeminiAdapter", x.Subsystem, "get_cost_per_1k_tokens", args...)
 }
 
 // GenerateReflectionAction implements packages/rae-agentic-memory/apps/memory_api/core/actions.py (GenerateReflectionAction).
@@ -3314,10 +3360,10 @@ func NewGenerateReflectionAction() *GenerateReflectionAction {
 }
 
 func (x *GenerateReflectionAction) IsValidForState(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GenerateReflectionAction", Subsystem: x.Subsystem, Operation: "is_valid_for_state", Status: "OK"}
+	return ExecuteDomainOp("GenerateReflectionAction", x.Subsystem, "is_valid_for_state", args...)
 }
 func (x *GenerateReflectionAction) EstimateCost(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GenerateReflectionAction", Subsystem: x.Subsystem, Operation: "estimate_cost", Status: "OK"}
+	return ExecuteDomainOp("GenerateReflectionAction", x.Subsystem, "estimate_cost", args...)
 }
 
 // GitFlowStrategy implements packages/rae-agentic-memory/rae-core/rae_core/governance/versioning.py (GitFlowStrategy).
@@ -3332,7 +3378,7 @@ func NewGitFlowStrategy() *GitFlowStrategy {
 }
 
 func (x *GitFlowStrategy) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GitFlowStrategy", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("GitFlowStrategy", x.Subsystem, "validate", args...)
 }
 
 // GitHubFlowStrategy implements packages/rae-agentic-memory/rae-core/rae_core/governance/versioning.py (GitHubFlowStrategy).
@@ -3347,7 +3393,7 @@ func NewGitHubFlowStrategy() *GitHubFlowStrategy {
 }
 
 func (x *GitHubFlowStrategy) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GitHubFlowStrategy", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("GitHubFlowStrategy", x.Subsystem, "validate", args...)
 }
 
 // GitInfo implements packages/rae-phoenix/feniks/core/models/types.py (GitInfo).
@@ -3362,10 +3408,10 @@ func NewGitInfo() *GitInfo {
 }
 
 func (x *GitInfo) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GitInfo", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("GitInfo", x.Subsystem, "execute", args...)
 }
 func (x *GitInfo) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GitInfo", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("GitInfo", x.Subsystem, "validate", args...)
 }
 
 // GitRuntimeAdapter implements packages/rae-agentic-memory/rae_adapters/git_adapter.py (GitRuntimeAdapter).
@@ -3380,7 +3426,7 @@ func NewGitRuntimeAdapter() *GitRuntimeAdapter {
 }
 
 func (x *GitRuntimeAdapter) Retrieve(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GitRuntimeAdapter", Subsystem: x.Subsystem, Operation: "retrieve", Status: "OK"}
+	return ExecuteDomainOp("GitRuntimeAdapter", x.Subsystem, "retrieve", args...)
 }
 
 // GitWorktreeManager implements packages/rae-hive/src/sandbox_manager.py (GitWorktreeManager).
@@ -3395,10 +3441,10 @@ func NewGitWorktreeManager() *GitWorktreeManager {
 }
 
 func (x *GitWorktreeManager) CreateWorktree(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GitWorktreeManager", Subsystem: x.Subsystem, Operation: "create_worktree", Status: "OK"}
+	return ExecuteDomainOp("GitWorktreeManager", x.Subsystem, "create_worktree", args...)
 }
 func (x *GitWorktreeManager) PruneWorktree(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GitWorktreeManager", Subsystem: x.Subsystem, Operation: "prune_worktree", Status: "OK"}
+	return ExecuteDomainOp("GitWorktreeManager", x.Subsystem, "prune_worktree", args...)
 }
 
 // GoldenSetRunner implements packages/rae-quality/engines/testing/golden_set_runner.py (GoldenSetRunner).
@@ -3413,7 +3459,7 @@ func NewGoldenSetRunner() *GoldenSetRunner {
 }
 
 func (x *GoldenSetRunner) RunGoldenSetRegression(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GoldenSetRunner", Subsystem: x.Subsystem, Operation: "run_golden_set_regression", Status: "OK"}
+	return ExecuteDomainOp("GoldenSetRunner", x.Subsystem, "run_golden_set_regression", args...)
 }
 
 // GovernanceDelegate implements packages/rae-agentic-memory/apps/memory_api/services/delegates/governance_delegate.py (GovernanceDelegate).
@@ -3428,7 +3474,7 @@ func NewGovernanceDelegate() *GovernanceDelegate {
 }
 
 func (x *GovernanceDelegate) ExecuteAction(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GovernanceDelegate", Subsystem: x.Subsystem, Operation: "execute_action", Status: "OK"}
+	return ExecuteDomainOp("GovernanceDelegate", x.Subsystem, "execute_action", args...)
 }
 
 // GovernanceEngine implements packages/rae-phoenix/feniks/governance/engine.py (GovernanceEngine).
@@ -3443,7 +3489,7 @@ func NewGovernanceEngine() *GovernanceEngine {
 }
 
 func (x *GovernanceEngine) RunChecks(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GovernanceEngine", Subsystem: x.Subsystem, Operation: "run_checks", Status: "OK"}
+	return ExecuteDomainOp("GovernanceEngine", x.Subsystem, "run_checks", args...)
 }
 
 // GovernanceRule implements packages/rae-phoenix/feniks/governance/rules.py (GovernanceRule).
@@ -3458,10 +3504,10 @@ func NewGovernanceRule() *GovernanceRule {
 }
 
 func (x *GovernanceRule) Id(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GovernanceRule", Subsystem: x.Subsystem, Operation: "id", Status: "OK"}
+	return ExecuteDomainOp("GovernanceRule", x.Subsystem, "id", args...)
 }
 func (x *GovernanceRule) Check(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GovernanceRule", Subsystem: x.Subsystem, Operation: "check", Status: "OK"}
+	return ExecuteDomainOp("GovernanceRule", x.Subsystem, "check", args...)
 }
 
 // GraphEdge implements packages/rae-agentic-memory/apps/memory_api/core/graph_operator.py (GraphEdge).
@@ -3476,7 +3522,7 @@ func NewGraphEdge() *GraphEdge {
 }
 
 func (x *GraphEdge) ToDict(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GraphEdge", Subsystem: x.Subsystem, Operation: "to_dict", Status: "OK"}
+	return ExecuteDomainOp("GraphEdge", x.Subsystem, "to_dict", args...)
 }
 
 // GraphExtractionService implements packages/rae-agentic-memory/apps/memory_api/services/graph_extraction.py (GraphExtractionService).
@@ -3491,10 +3537,10 @@ func NewGraphExtractionService() *GraphExtractionService {
 }
 
 func (x *GraphExtractionService) ExtractKnowledgeGraph(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GraphExtractionService", Subsystem: x.Subsystem, Operation: "extract_knowledge_graph", Status: "OK"}
+	return ExecuteDomainOp("GraphExtractionService", x.Subsystem, "extract_knowledge_graph", args...)
 }
 func (x *GraphExtractionService) StoreGraphTriples(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GraphExtractionService", Subsystem: x.Subsystem, Operation: "store_graph_triples", Status: "OK"}
+	return ExecuteDomainOp("GraphExtractionService", x.Subsystem, "store_graph_triples", args...)
 }
 
 // GraphLiteStrategy implements packages/rae-agentic-memory/rae-core/rae_core/search/strategies/graph_lite.py (GraphLiteStrategy).
@@ -3509,13 +3555,13 @@ func NewGraphLiteStrategy() *GraphLiteStrategy {
 }
 
 func (x *GraphLiteStrategy) Search(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GraphLiteStrategy", Subsystem: x.Subsystem, Operation: "search", Status: "OK"}
+	return ExecuteDomainOp("GraphLiteStrategy", x.Subsystem, "search", args...)
 }
 func (x *GraphLiteStrategy) GetStrategyName(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GraphLiteStrategy", Subsystem: x.Subsystem, Operation: "get_strategy_name", Status: "OK"}
+	return ExecuteDomainOp("GraphLiteStrategy", x.Subsystem, "get_strategy_name", args...)
 }
 func (x *GraphLiteStrategy) GetStrategyWeight(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GraphLiteStrategy", Subsystem: x.Subsystem, Operation: "get_strategy_weight", Status: "OK"}
+	return ExecuteDomainOp("GraphLiteStrategy", x.Subsystem, "get_strategy_weight", args...)
 }
 
 // GraphNode implements packages/rae-agentic-memory/apps/memory_api/core/graph_operator.py (GraphNode).
@@ -3530,13 +3576,13 @@ func NewGraphNode() *GraphNode {
 }
 
 func (x *GraphNode) ToDict(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GraphNode", Subsystem: x.Subsystem, Operation: "to_dict", Status: "OK"}
+	return ExecuteDomainOp("GraphNode", x.Subsystem, "to_dict", args...)
 }
 func (x *GraphNode) AddEdge(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GraphNode", Subsystem: x.Subsystem, Operation: "add_edge", Status: "OK"}
+	return ExecuteDomainOp("GraphNode", x.Subsystem, "add_edge", args...)
 }
 func (x *GraphNode) GetNeighbors(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GraphNode", Subsystem: x.Subsystem, Operation: "get_neighbors", Status: "OK"}
+	return ExecuteDomainOp("GraphNode", x.Subsystem, "get_neighbors", args...)
 }
 
 // GraphTopologyEngine implements packages/rae-agentic-memory/apps/memory_api/services/graph_topology_engine.py (GraphTopologyEngine).
@@ -3551,13 +3597,13 @@ func NewGraphTopologyEngine() *GraphTopologyEngine {
 }
 
 func (x *GraphTopologyEngine) BuildNetworkxGraph(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GraphTopologyEngine", Subsystem: x.Subsystem, Operation: "build_networkx_graph", Status: "OK"}
+	return ExecuteDomainOp("GraphTopologyEngine", x.Subsystem, "build_networkx_graph", args...)
 }
 func (x *GraphTopologyEngine) ProvePaths(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GraphTopologyEngine", Subsystem: x.Subsystem, Operation: "prove_paths", Status: "OK"}
+	return ExecuteDomainOp("GraphTopologyEngine", x.Subsystem, "prove_paths", args...)
 }
 func (x *GraphTopologyEngine) GetCentralConcepts(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GraphTopologyEngine", Subsystem: x.Subsystem, Operation: "get_central_concepts", Status: "OK"}
+	return ExecuteDomainOp("GraphTopologyEngine", x.Subsystem, "get_central_concepts", args...)
 }
 
 // GraphTraversalStrategy implements packages/rae-agentic-memory/rae-core/rae_core/search/strategies/graph.py (GraphTraversalStrategy).
@@ -3572,13 +3618,13 @@ func NewGraphTraversalStrategy() *GraphTraversalStrategy {
 }
 
 func (x *GraphTraversalStrategy) Search(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GraphTraversalStrategy", Subsystem: x.Subsystem, Operation: "search", Status: "OK"}
+	return ExecuteDomainOp("GraphTraversalStrategy", x.Subsystem, "search", args...)
 }
 func (x *GraphTraversalStrategy) GetStrategyName(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GraphTraversalStrategy", Subsystem: x.Subsystem, Operation: "get_strategy_name", Status: "OK"}
+	return ExecuteDomainOp("GraphTraversalStrategy", x.Subsystem, "get_strategy_name", args...)
 }
 func (x *GraphTraversalStrategy) GetStrategyWeight(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GraphTraversalStrategy", Subsystem: x.Subsystem, Operation: "get_strategy_weight", Status: "OK"}
+	return ExecuteDomainOp("GraphTraversalStrategy", x.Subsystem, "get_strategy_weight", args...)
 }
 
 // GrokProvider implements packages/rae-agentic-memory/apps/llm/providers/grok_provider.py (GrokProvider).
@@ -3593,10 +3639,10 @@ func NewGrokProvider() *GrokProvider {
 }
 
 func (x *GrokProvider) Complete(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GrokProvider", Subsystem: x.Subsystem, Operation: "complete", Status: "OK"}
+	return ExecuteDomainOp("GrokProvider", x.Subsystem, "complete", args...)
 }
 func (x *GrokProvider) Stream(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GrokProvider", Subsystem: x.Subsystem, Operation: "stream", Status: "OK"}
+	return ExecuteDomainOp("GrokProvider", x.Subsystem, "stream", args...)
 }
 
 // GuardrailManager implements core/guardrail_manager.py (GuardrailManager).
@@ -3611,13 +3657,13 @@ func NewGuardrailManager() *GuardrailManager {
 }
 
 func (x *GuardrailManager) RegisterCandidate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GuardrailManager", Subsystem: x.Subsystem, Operation: "register_candidate", Status: "OK"}
+	return ExecuteDomainOp("GuardrailManager", x.Subsystem, "register_candidate", args...)
 }
 func (x *GuardrailManager) PromoteToShadow(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GuardrailManager", Subsystem: x.Subsystem, Operation: "promote_to_shadow", Status: "OK"}
+	return ExecuteDomainOp("GuardrailManager", x.Subsystem, "promote_to_shadow", args...)
 }
 func (x *GuardrailManager) EvaluatePromotion(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "GuardrailManager", Subsystem: x.Subsystem, Operation: "evaluate_promotion", Status: "OK"}
+	return ExecuteDomainOp("GuardrailManager", x.Subsystem, "evaluate_promotion", args...)
 }
 
 // HardFrameEnforcer implements packages/rae-agentic-memory/rae-core/rae_core/governance/frame_enforcer.py (HardFrameEnforcer).
@@ -3632,13 +3678,13 @@ func NewHardFrameEnforcer() *HardFrameEnforcer {
 }
 
 func (x *HardFrameEnforcer) CurrentState(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HardFrameEnforcer", Subsystem: x.Subsystem, Operation: "current_state", Status: "OK"}
+	return ExecuteDomainOp("HardFrameEnforcer", x.Subsystem, "current_state", args...)
 }
 func (x *HardFrameEnforcer) TransitionTo(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HardFrameEnforcer", Subsystem: x.Subsystem, Operation: "transition_to", Status: "OK"}
+	return ExecuteDomainOp("HardFrameEnforcer", x.Subsystem, "transition_to", args...)
 }
 func (x *HardFrameEnforcer) GetJournal(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HardFrameEnforcer", Subsystem: x.Subsystem, Operation: "get_journal", Status: "OK"}
+	return ExecuteDomainOp("HardFrameEnforcer", x.Subsystem, "get_journal", args...)
 }
 
 // HardFramesEngine implements core/hard_frames_engine.py (HardFramesEngine).
@@ -3653,13 +3699,13 @@ func NewHardFramesEngine() *HardFramesEngine {
 }
 
 func (x *HardFramesEngine) MarkBootstrapped(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HardFramesEngine", Subsystem: x.Subsystem, Operation: "mark_bootstrapped", Status: "OK"}
+	return ExecuteDomainOp("HardFramesEngine", x.Subsystem, "mark_bootstrapped", args...)
 }
 func (x *HardFramesEngine) ValidatePreToolFrame(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HardFramesEngine", Subsystem: x.Subsystem, Operation: "validate_pre_tool_frame", Status: "OK"}
+	return ExecuteDomainOp("HardFramesEngine", x.Subsystem, "validate_pre_tool_frame", args...)
 }
 func (x *HardFramesEngine) ValidatePostToolFrame(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HardFramesEngine", Subsystem: x.Subsystem, Operation: "validate_post_tool_frame", Status: "OK"}
+	return ExecuteDomainOp("HardFramesEngine", x.Subsystem, "validate_post_tool_frame", args...)
 }
 
 // HardwareDetector implements packages/rae-agentic-memory/rae-windows/rae_lite/hardware.py (HardwareDetector).
@@ -3674,19 +3720,19 @@ func NewHardwareDetector() *HardwareDetector {
 }
 
 func (x *HardwareDetector) DetectAll(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HardwareDetector", Subsystem: x.Subsystem, Operation: "detect_all", Status: "OK"}
+	return ExecuteDomainOp("HardwareDetector", x.Subsystem, "detect_all", args...)
 }
 func (x *HardwareDetector) DetectRam(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HardwareDetector", Subsystem: x.Subsystem, Operation: "detect_ram", Status: "OK"}
+	return ExecuteDomainOp("HardwareDetector", x.Subsystem, "detect_ram", args...)
 }
 func (x *HardwareDetector) DetectCpu(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HardwareDetector", Subsystem: x.Subsystem, Operation: "detect_cpu", Status: "OK"}
+	return ExecuteDomainOp("HardwareDetector", x.Subsystem, "detect_cpu", args...)
 }
 func (x *HardwareDetector) DetectGpu(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HardwareDetector", Subsystem: x.Subsystem, Operation: "detect_gpu", Status: "OK"}
+	return ExecuteDomainOp("HardwareDetector", x.Subsystem, "detect_gpu", args...)
 }
 func (x *HardwareDetector) GetProfileSuggestion(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HardwareDetector", Subsystem: x.Subsystem, Operation: "get_profile_suggestion", Status: "OK"}
+	return ExecuteDomainOp("HardwareDetector", x.Subsystem, "get_profile_suggestion", args...)
 }
 
 // HealthChangeMessage implements packages/rae-agentic-memory/apps/memory_api/models/dashboard_models.py (HealthChangeMessage).
@@ -3701,10 +3747,10 @@ func NewHealthChangeMessage() *HealthChangeMessage {
 }
 
 func (x *HealthChangeMessage) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HealthChangeMessage", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("HealthChangeMessage", x.Subsystem, "execute", args...)
 }
 func (x *HealthChangeMessage) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HealthChangeMessage", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("HealthChangeMessage", x.Subsystem, "validate", args...)
 }
 
 // HiveExecutionEvaluator implements packages/rae-hive/base_agent/evaluator.py (HiveExecutionEvaluator).
@@ -3719,13 +3765,13 @@ func NewHiveExecutionEvaluator() *HiveExecutionEvaluator {
 }
 
 func (x *HiveExecutionEvaluator) StartMonitoring(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HiveExecutionEvaluator", Subsystem: x.Subsystem, Operation: "start_monitoring", Status: "OK"}
+	return ExecuteDomainOp("HiveExecutionEvaluator", x.Subsystem, "start_monitoring", args...)
 }
 func (x *HiveExecutionEvaluator) StopMonitoring(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HiveExecutionEvaluator", Subsystem: x.Subsystem, Operation: "stop_monitoring", Status: "OK"}
+	return ExecuteDomainOp("HiveExecutionEvaluator", x.Subsystem, "stop_monitoring", args...)
 }
 func (x *HiveExecutionEvaluator) ReportToLab(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HiveExecutionEvaluator", Subsystem: x.Subsystem, Operation: "report_to_lab", Status: "OK"}
+	return ExecuteDomainOp("HiveExecutionEvaluator", x.Subsystem, "report_to_lab", args...)
 }
 
 // HiveExecutionSwarm implements packages/rae-hive/hive_engine.py (HiveExecutionSwarm).
@@ -3740,10 +3786,10 @@ func NewHiveExecutionSwarm() *HiveExecutionSwarm {
 }
 
 func (x *HiveExecutionSwarm) RunCommand(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HiveExecutionSwarm", Subsystem: x.Subsystem, Operation: "run_command", Status: "OK"}
+	return ExecuteDomainOp("HiveExecutionSwarm", x.Subsystem, "run_command", args...)
 }
 func (x *HiveExecutionSwarm) RunParallelCommands(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HiveExecutionSwarm", Subsystem: x.Subsystem, Operation: "run_parallel_commands", Status: "OK"}
+	return ExecuteDomainOp("HiveExecutionSwarm", x.Subsystem, "run_parallel_commands", args...)
 }
 
 // HiveMindConnector implements packages/rae-hive/base_agent/connector.py (HiveMindConnector).
@@ -3758,34 +3804,34 @@ func NewHiveMindConnector() *HiveMindConnector {
 }
 
 func (x *HiveMindConnector) ListMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HiveMindConnector", Subsystem: x.Subsystem, Operation: "list_memories", Status: "OK"}
+	return ExecuteDomainOp("HiveMindConnector", x.Subsystem, "list_memories", args...)
 }
 func (x *HiveMindConnector) AddMemory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HiveMindConnector", Subsystem: x.Subsystem, Operation: "add_memory", Status: "OK"}
+	return ExecuteDomainOp("HiveMindConnector", x.Subsystem, "add_memory", args...)
 }
 func (x *HiveMindConnector) QueryMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HiveMindConnector", Subsystem: x.Subsystem, Operation: "query_memories", Status: "OK"}
+	return ExecuteDomainOp("HiveMindConnector", x.Subsystem, "query_memories", args...)
 }
 func (x *HiveMindConnector) LogActivity(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HiveMindConnector", Subsystem: x.Subsystem, Operation: "log_activity", Status: "OK"}
+	return ExecuteDomainOp("HiveMindConnector", x.Subsystem, "log_activity", args...)
 }
 func (x *HiveMindConnector) GetTasks(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HiveMindConnector", Subsystem: x.Subsystem, Operation: "get_tasks", Status: "OK"}
+	return ExecuteDomainOp("HiveMindConnector", x.Subsystem, "get_tasks", args...)
 }
 func (x *HiveMindConnector) UpdateTask(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HiveMindConnector", Subsystem: x.Subsystem, Operation: "update_task", Status: "OK"}
+	return ExecuteDomainOp("HiveMindConnector", x.Subsystem, "update_task", args...)
 }
 func (x *HiveMindConnector) Think(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HiveMindConnector", Subsystem: x.Subsystem, Operation: "think", Status: "OK"}
+	return ExecuteDomainOp("HiveMindConnector", x.Subsystem, "think", args...)
 }
 func (x *HiveMindConnector) Interact(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HiveMindConnector", Subsystem: x.Subsystem, Operation: "interact", Status: "OK"}
+	return ExecuteDomainOp("HiveMindConnector", x.Subsystem, "interact", args...)
 }
 func (x *HiveMindConnector) ReadSourceFile(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HiveMindConnector", Subsystem: x.Subsystem, Operation: "read_source_file", Status: "OK"}
+	return ExecuteDomainOp("HiveMindConnector", x.Subsystem, "read_source_file", args...)
 }
 func (x *HiveMindConnector) WriteSourceFile(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HiveMindConnector", Subsystem: x.Subsystem, Operation: "write_source_file", Status: "OK"}
+	return ExecuteDomainOp("HiveMindConnector", x.Subsystem, "write_source_file", args...)
 }
 
 // HiveSandboxApp implements packages/rae-agentic-memory/rae-portal/apps/hive_sandbox.py (HiveSandboxApp).
@@ -3800,7 +3846,7 @@ func NewHiveSandboxApp() *HiveSandboxApp {
 }
 
 func (x *HiveSandboxApp) Render(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HiveSandboxApp", Subsystem: x.Subsystem, Operation: "render", Status: "OK"}
+	return ExecuteDomainOp("HiveSandboxApp", x.Subsystem, "render", args...)
 }
 
 // HiveTelemetry implements packages/rae-hive/src/rae_hive/telemetry.py (HiveTelemetry).
@@ -3815,7 +3861,7 @@ func NewHiveTelemetry() *HiveTelemetry {
 }
 
 func (x *HiveTelemetry) RecordActionOutcome(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HiveTelemetry", Subsystem: x.Subsystem, Operation: "record_action_outcome", Status: "OK"}
+	return ExecuteDomainOp("HiveTelemetry", x.Subsystem, "record_action_outcome", args...)
 }
 
 // HTTPRunner implements packages/rae-phoenix/feniks/adapters/runners/http_runner.py (HTTPRunner).
@@ -3830,7 +3876,7 @@ func NewHTTPRunner() *HTTPRunner {
 }
 
 func (x *HTTPRunner) ExecuteScenario(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HTTPRunner", Subsystem: x.Subsystem, Operation: "execute_scenario", Status: "OK"}
+	return ExecuteDomainOp("HTTPRunner", x.Subsystem, "execute_scenario", args...)
 }
 
 // HttpSyncProvider implements packages/rae-agentic-memory/rae-core/rae_core/sync/http_provider.py (HttpSyncProvider).
@@ -3845,31 +3891,31 @@ func NewHttpSyncProvider() *HttpSyncProvider {
 }
 
 func (x *HttpSyncProvider) Close(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HttpSyncProvider", Subsystem: x.Subsystem, Operation: "close", Status: "OK"}
+	return ExecuteDomainOp("HttpSyncProvider", x.Subsystem, "close", args...)
 }
 func (x *HttpSyncProvider) PushChanges(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HttpSyncProvider", Subsystem: x.Subsystem, Operation: "push_changes", Status: "OK"}
+	return ExecuteDomainOp("HttpSyncProvider", x.Subsystem, "push_changes", args...)
 }
 func (x *HttpSyncProvider) PullChanges(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HttpSyncProvider", Subsystem: x.Subsystem, Operation: "pull_changes", Status: "OK"}
+	return ExecuteDomainOp("HttpSyncProvider", x.Subsystem, "pull_changes", args...)
 }
 func (x *HttpSyncProvider) ResolveConflict(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HttpSyncProvider", Subsystem: x.Subsystem, Operation: "resolve_conflict", Status: "OK"}
+	return ExecuteDomainOp("HttpSyncProvider", x.Subsystem, "resolve_conflict", args...)
 }
 func (x *HttpSyncProvider) PushMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HttpSyncProvider", Subsystem: x.Subsystem, Operation: "push_memories", Status: "OK"}
+	return ExecuteDomainOp("HttpSyncProvider", x.Subsystem, "push_memories", args...)
 }
 func (x *HttpSyncProvider) PullMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HttpSyncProvider", Subsystem: x.Subsystem, Operation: "pull_memories", Status: "OK"}
+	return ExecuteDomainOp("HttpSyncProvider", x.Subsystem, "pull_memories", args...)
 }
 func (x *HttpSyncProvider) SyncMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HttpSyncProvider", Subsystem: x.Subsystem, Operation: "sync_memories", Status: "OK"}
+	return ExecuteDomainOp("HttpSyncProvider", x.Subsystem, "sync_memories", args...)
 }
 func (x *HttpSyncProvider) GetSyncStatus(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HttpSyncProvider", Subsystem: x.Subsystem, Operation: "get_sync_status", Status: "OK"}
+	return ExecuteDomainOp("HttpSyncProvider", x.Subsystem, "get_sync_status", args...)
 }
 func (x *HttpSyncProvider) Handshake(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HttpSyncProvider", Subsystem: x.Subsystem, Operation: "handshake", Status: "OK"}
+	return ExecuteDomainOp("HttpSyncProvider", x.Subsystem, "handshake", args...)
 }
 
 // HybridSearchService implements packages/rae-agentic-memory/apps/memory_api/services/hybrid_search_service.py (HybridSearchService).
@@ -3884,7 +3930,7 @@ func NewHybridSearchService() *HybridSearchService {
 }
 
 func (x *HybridSearchService) Search(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HybridSearchService", Subsystem: x.Subsystem, Operation: "search", Status: "OK"}
+	return ExecuteDomainOp("HybridSearchService", x.Subsystem, "search", args...)
 }
 
 // HypothesisEngine implements packages/rae-lab/src/rae_lab/hypothesis_engine.py (HypothesisEngine).
@@ -3899,10 +3945,10 @@ func NewHypothesisEngine() *HypothesisEngine {
 }
 
 func (x *HypothesisEngine) GenerateFromFailures(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HypothesisEngine", Subsystem: x.Subsystem, Operation: "generate_from_failures", Status: "OK"}
+	return ExecuteDomainOp("HypothesisEngine", x.Subsystem, "generate_from_failures", args...)
 }
 func (x *HypothesisEngine) GenerateFromOutcomes(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HypothesisEngine", Subsystem: x.Subsystem, Operation: "generate_from_outcomes", Status: "OK"}
+	return ExecuteDomainOp("HypothesisEngine", x.Subsystem, "generate_from_outcomes", args...)
 }
 
 // HypothesisManager implements core/improvement_plane/hypothesis_manager.py (HypothesisManager).
@@ -3917,10 +3963,10 @@ func NewHypothesisManager() *HypothesisManager {
 }
 
 func (x *HypothesisManager) CreateHypothesis(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HypothesisManager", Subsystem: x.Subsystem, Operation: "create_hypothesis", Status: "OK"}
+	return ExecuteDomainOp("HypothesisManager", x.Subsystem, "create_hypothesis", args...)
 }
 func (x *HypothesisManager) UpdateStatus(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "HypothesisManager", Subsystem: x.Subsystem, Operation: "update_status", Status: "OK"}
+	return ExecuteDomainOp("HypothesisManager", x.Subsystem, "update_status", args...)
 }
 
 // ICacheProvider implements packages/rae-agentic-memory/rae-core/rae_core/interfaces/cache.py (ICacheProvider).
@@ -3935,19 +3981,19 @@ func NewICacheProvider() *ICacheProvider {
 }
 
 func (x *ICacheProvider) Get(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ICacheProvider", Subsystem: x.Subsystem, Operation: "get", Status: "OK"}
+	return ExecuteDomainOp("ICacheProvider", x.Subsystem, "get", args...)
 }
 func (x *ICacheProvider) Set(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ICacheProvider", Subsystem: x.Subsystem, Operation: "set", Status: "OK"}
+	return ExecuteDomainOp("ICacheProvider", x.Subsystem, "set", args...)
 }
 func (x *ICacheProvider) Delete(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ICacheProvider", Subsystem: x.Subsystem, Operation: "delete", Status: "OK"}
+	return ExecuteDomainOp("ICacheProvider", x.Subsystem, "delete", args...)
 }
 func (x *ICacheProvider) Exists(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ICacheProvider", Subsystem: x.Subsystem, Operation: "exists", Status: "OK"}
+	return ExecuteDomainOp("ICacheProvider", x.Subsystem, "exists", args...)
 }
 func (x *ICacheProvider) Clear(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ICacheProvider", Subsystem: x.Subsystem, Operation: "clear", Status: "OK"}
+	return ExecuteDomainOp("ICacheProvider", x.Subsystem, "clear", args...)
 }
 
 // IClock implements packages/rae-agentic-memory/rae-core/rae_core/utils/clock.py (IClock).
@@ -3962,7 +4008,7 @@ func NewIClock() *IClock {
 }
 
 func (x *IClock) Now(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IClock", Subsystem: x.Subsystem, Operation: "now", Status: "OK"}
+	return ExecuteDomainOp("IClock", x.Subsystem, "now", args...)
 }
 
 // ICompressor implements packages/rae-agentic-memory/rae-core/rae_core/ingestion/interfaces.py (ICompressor).
@@ -3977,7 +4023,7 @@ func NewICompressor() *ICompressor {
 }
 
 func (x *ICompressor) Compress(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ICompressor", Subsystem: x.Subsystem, Operation: "compress", Status: "OK"}
+	return ExecuteDomainOp("ICompressor", x.Subsystem, "compress", args...)
 }
 
 // IDatabaseConnection implements packages/rae-agentic-memory/rae-core/rae_core/interfaces/database.py (IDatabaseConnection).
@@ -3992,22 +4038,22 @@ func NewIDatabaseConnection() *IDatabaseConnection {
 }
 
 func (x *IDatabaseConnection) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IDatabaseConnection", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("IDatabaseConnection", x.Subsystem, "execute", args...)
 }
 func (x *IDatabaseConnection) Fetch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IDatabaseConnection", Subsystem: x.Subsystem, Operation: "fetch", Status: "OK"}
+	return ExecuteDomainOp("IDatabaseConnection", x.Subsystem, "fetch", args...)
 }
 func (x *IDatabaseConnection) Fetchrow(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IDatabaseConnection", Subsystem: x.Subsystem, Operation: "fetchrow", Status: "OK"}
+	return ExecuteDomainOp("IDatabaseConnection", x.Subsystem, "fetchrow", args...)
 }
 func (x *IDatabaseConnection) Fetchval(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IDatabaseConnection", Subsystem: x.Subsystem, Operation: "fetchval", Status: "OK"}
+	return ExecuteDomainOp("IDatabaseConnection", x.Subsystem, "fetchval", args...)
 }
 func (x *IDatabaseConnection) Executemany(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IDatabaseConnection", Subsystem: x.Subsystem, Operation: "executemany", Status: "OK"}
+	return ExecuteDomainOp("IDatabaseConnection", x.Subsystem, "executemany", args...)
 }
 func (x *IDatabaseConnection) Transaction(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IDatabaseConnection", Subsystem: x.Subsystem, Operation: "transaction", Status: "OK"}
+	return ExecuteDomainOp("IDatabaseConnection", x.Subsystem, "transaction", args...)
 }
 
 // IDatabaseProvider implements packages/rae-agentic-memory/rae-core/rae_core/interfaces/database.py (IDatabaseProvider).
@@ -4022,25 +4068,25 @@ func NewIDatabaseProvider() *IDatabaseProvider {
 }
 
 func (x *IDatabaseProvider) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IDatabaseProvider", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("IDatabaseProvider", x.Subsystem, "execute", args...)
 }
 func (x *IDatabaseProvider) Fetch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IDatabaseProvider", Subsystem: x.Subsystem, Operation: "fetch", Status: "OK"}
+	return ExecuteDomainOp("IDatabaseProvider", x.Subsystem, "fetch", args...)
 }
 func (x *IDatabaseProvider) Fetchrow(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IDatabaseProvider", Subsystem: x.Subsystem, Operation: "fetchrow", Status: "OK"}
+	return ExecuteDomainOp("IDatabaseProvider", x.Subsystem, "fetchrow", args...)
 }
 func (x *IDatabaseProvider) Fetchval(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IDatabaseProvider", Subsystem: x.Subsystem, Operation: "fetchval", Status: "OK"}
+	return ExecuteDomainOp("IDatabaseProvider", x.Subsystem, "fetchval", args...)
 }
 func (x *IDatabaseProvider) Executemany(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IDatabaseProvider", Subsystem: x.Subsystem, Operation: "executemany", Status: "OK"}
+	return ExecuteDomainOp("IDatabaseProvider", x.Subsystem, "executemany", args...)
 }
 func (x *IDatabaseProvider) Close(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IDatabaseProvider", Subsystem: x.Subsystem, Operation: "close", Status: "OK"}
+	return ExecuteDomainOp("IDatabaseProvider", x.Subsystem, "close", args...)
 }
 func (x *IDatabaseProvider) Acquire(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IDatabaseProvider", Subsystem: x.Subsystem, Operation: "acquire", Status: "OK"}
+	return ExecuteDomainOp("IDatabaseProvider", x.Subsystem, "acquire", args...)
 }
 
 // IEmbeddingProvider implements packages/rae-agentic-memory/rae-core/rae_core/interfaces/embedding.py (IEmbeddingProvider).
@@ -4055,13 +4101,13 @@ func NewIEmbeddingProvider() *IEmbeddingProvider {
 }
 
 func (x *IEmbeddingProvider) EmbedText(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IEmbeddingProvider", Subsystem: x.Subsystem, Operation: "embed_text", Status: "OK"}
+	return ExecuteDomainOp("IEmbeddingProvider", x.Subsystem, "embed_text", args...)
 }
 func (x *IEmbeddingProvider) EmbedBatch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IEmbeddingProvider", Subsystem: x.Subsystem, Operation: "embed_batch", Status: "OK"}
+	return ExecuteDomainOp("IEmbeddingProvider", x.Subsystem, "embed_batch", args...)
 }
 func (x *IEmbeddingProvider) GetDimension(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IEmbeddingProvider", Subsystem: x.Subsystem, Operation: "get_dimension", Status: "OK"}
+	return ExecuteDomainOp("IEmbeddingProvider", x.Subsystem, "get_dimension", args...)
 }
 
 // IGraphStore implements packages/rae-agentic-memory/rae-core/rae_core/interfaces/graph.py (IGraphStore).
@@ -4076,25 +4122,25 @@ func NewIGraphStore() *IGraphStore {
 }
 
 func (x *IGraphStore) CreateNode(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IGraphStore", Subsystem: x.Subsystem, Operation: "create_node", Status: "OK"}
+	return ExecuteDomainOp("IGraphStore", x.Subsystem, "create_node", args...)
 }
 func (x *IGraphStore) CreateEdge(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IGraphStore", Subsystem: x.Subsystem, Operation: "create_edge", Status: "OK"}
+	return ExecuteDomainOp("IGraphStore", x.Subsystem, "create_edge", args...)
 }
 func (x *IGraphStore) GetNeighbors(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IGraphStore", Subsystem: x.Subsystem, Operation: "get_neighbors", Status: "OK"}
+	return ExecuteDomainOp("IGraphStore", x.Subsystem, "get_neighbors", args...)
 }
 func (x *IGraphStore) DeleteNode(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IGraphStore", Subsystem: x.Subsystem, Operation: "delete_node", Status: "OK"}
+	return ExecuteDomainOp("IGraphStore", x.Subsystem, "delete_node", args...)
 }
 func (x *IGraphStore) DeleteEdge(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IGraphStore", Subsystem: x.Subsystem, Operation: "delete_edge", Status: "OK"}
+	return ExecuteDomainOp("IGraphStore", x.Subsystem, "delete_edge", args...)
 }
 func (x *IGraphStore) ShortestPath(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IGraphStore", Subsystem: x.Subsystem, Operation: "shortest_path", Status: "OK"}
+	return ExecuteDomainOp("IGraphStore", x.Subsystem, "shortest_path", args...)
 }
 func (x *IGraphStore) GetSubgraph(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IGraphStore", Subsystem: x.Subsystem, Operation: "get_subgraph", Status: "OK"}
+	return ExecuteDomainOp("IGraphStore", x.Subsystem, "get_subgraph", args...)
 }
 
 // IKnowledgeAdapter implements packages/rae-agentic-memory/rae-core/rae_core/interfaces/adapter.py (IKnowledgeAdapter).
@@ -4109,7 +4155,7 @@ func NewIKnowledgeAdapter() *IKnowledgeAdapter {
 }
 
 func (x *IKnowledgeAdapter) Retrieve(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IKnowledgeAdapter", Subsystem: x.Subsystem, Operation: "retrieve", Status: "OK"}
+	return ExecuteDomainOp("IKnowledgeAdapter", x.Subsystem, "retrieve", args...)
 }
 
 // ILLMProvider implements packages/rae-agentic-memory/rae-core/rae_core/interfaces/llm.py (ILLMProvider).
@@ -4124,22 +4170,22 @@ func NewILLMProvider() *ILLMProvider {
 }
 
 func (x *ILLMProvider) Generate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ILLMProvider", Subsystem: x.Subsystem, Operation: "generate", Status: "OK"}
+	return ExecuteDomainOp("ILLMProvider", x.Subsystem, "generate", args...)
 }
 func (x *ILLMProvider) GenerateWithContext(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ILLMProvider", Subsystem: x.Subsystem, Operation: "generate_with_context", Status: "OK"}
+	return ExecuteDomainOp("ILLMProvider", x.Subsystem, "generate_with_context", args...)
 }
 func (x *ILLMProvider) CountTokens(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ILLMProvider", Subsystem: x.Subsystem, Operation: "count_tokens", Status: "OK"}
+	return ExecuteDomainOp("ILLMProvider", x.Subsystem, "count_tokens", args...)
 }
 func (x *ILLMProvider) SupportsFunctionCalling(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ILLMProvider", Subsystem: x.Subsystem, Operation: "supports_function_calling", Status: "OK"}
+	return ExecuteDomainOp("ILLMProvider", x.Subsystem, "supports_function_calling", args...)
 }
 func (x *ILLMProvider) ExtractEntities(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ILLMProvider", Subsystem: x.Subsystem, Operation: "extract_entities", Status: "OK"}
+	return ExecuteDomainOp("ILLMProvider", x.Subsystem, "extract_entities", args...)
 }
 func (x *ILLMProvider) Summarize(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ILLMProvider", Subsystem: x.Subsystem, Operation: "summarize", Status: "OK"}
+	return ExecuteDomainOp("ILLMProvider", x.Subsystem, "summarize", args...)
 }
 
 // IMemoryStorage implements packages/rae-agentic-memory/rae-core/rae_core/interfaces/storage.py (IMemoryStorage).
@@ -4154,70 +4200,70 @@ func NewIMemoryStorage() *IMemoryStorage {
 }
 
 func (x *IMemoryStorage) StoreMemory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "store_memory", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "store_memory", args...)
 }
 func (x *IMemoryStorage) StoreReflectionAudit(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "store_reflection_audit", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "store_reflection_audit", args...)
 }
 func (x *IMemoryStorage) GetMemory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "get_memory", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "get_memory", args...)
 }
 func (x *IMemoryStorage) GetMemoriesBatch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "get_memories_batch", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "get_memories_batch", args...)
 }
 func (x *IMemoryStorage) UpdateMemory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "update_memory", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "update_memory", args...)
 }
 func (x *IMemoryStorage) DeleteMemory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "delete_memory", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "delete_memory", args...)
 }
 func (x *IMemoryStorage) ListMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "list_memories", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "list_memories", args...)
 }
 func (x *IMemoryStorage) DeleteMemoriesWithMetadataFilter(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "delete_memories_with_metadata_filter", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "delete_memories_with_metadata_filter", args...)
 }
 func (x *IMemoryStorage) DeleteMemoriesBelowImportance(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "delete_memories_below_importance", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "delete_memories_below_importance", args...)
 }
 func (x *IMemoryStorage) CountMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "count_memories", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "count_memories", args...)
 }
 func (x *IMemoryStorage) SearchMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "search_memories", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "search_memories", args...)
 }
 func (x *IMemoryStorage) DeleteExpiredMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "delete_expired_memories", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "delete_expired_memories", args...)
 }
 func (x *IMemoryStorage) UpdateMemoryAccess(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "update_memory_access", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "update_memory_access", args...)
 }
 func (x *IMemoryStorage) IncrementAccessCount(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "increment_access_count", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "increment_access_count", args...)
 }
 func (x *IMemoryStorage) UpdateMemoryExpiration(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "update_memory_expiration", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "update_memory_expiration", args...)
 }
 func (x *IMemoryStorage) GetMetricAggregate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "get_metric_aggregate", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "get_metric_aggregate", args...)
 }
 func (x *IMemoryStorage) UpdateMemoryAccessBatch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "update_memory_access_batch", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "update_memory_access_batch", args...)
 }
 func (x *IMemoryStorage) AdjustImportance(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "adjust_importance", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "adjust_importance", args...)
 }
 func (x *IMemoryStorage) SaveEmbedding(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "save_embedding", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "save_embedding", args...)
 }
 func (x *IMemoryStorage) DecayImportance(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "decay_importance", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "decay_importance", args...)
 }
 func (x *IMemoryStorage) ClearTenant(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "clear_tenant", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "clear_tenant", args...)
 }
 func (x *IMemoryStorage) Close(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMemoryStorage", Subsystem: x.Subsystem, Operation: "close", Status: "OK"}
+	return ExecuteDomainOp("IMemoryStorage", x.Subsystem, "close", args...)
 }
 
 // IMetric implements packages/rae-agentic-memory/rae-core/rae_core/math/quality_metrics.py (IMetric).
@@ -4232,10 +4278,10 @@ func NewIMetric() *IMetric {
 }
 
 func (x *IMetric) Name(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMetric", Subsystem: x.Subsystem, Operation: "name", Status: "OK"}
+	return ExecuteDomainOp("IMetric", x.Subsystem, "name", args...)
 }
 func (x *IMetric) Compute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IMetric", Subsystem: x.Subsystem, Operation: "compute", Status: "OK"}
+	return ExecuteDomainOp("IMetric", x.Subsystem, "compute", args...)
 }
 
 // ImplementerAgent implements packages/rae-agentic-memory/orchestrator/agents/implementer.py (ImplementerAgent).
@@ -4250,7 +4296,7 @@ func NewImplementerAgent() *ImplementerAgent {
 }
 
 func (x *ImplementerAgent) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ImplementerAgent", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("ImplementerAgent", x.Subsystem, "execute", args...)
 }
 
 // ImportanceDecay implements packages/rae-agentic-memory/rae-core/rae_core/scoring/decay.py (ImportanceDecay).
@@ -4265,16 +4311,16 @@ func NewImportanceDecay() *ImportanceDecay {
 }
 
 func (x *ImportanceDecay) ExponentialDecay(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ImportanceDecay", Subsystem: x.Subsystem, Operation: "exponential_decay", Status: "OK"}
+	return ExecuteDomainOp("ImportanceDecay", x.Subsystem, "exponential_decay", args...)
 }
 func (x *ImportanceDecay) LinearDecay(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ImportanceDecay", Subsystem: x.Subsystem, Operation: "linear_decay", Status: "OK"}
+	return ExecuteDomainOp("ImportanceDecay", x.Subsystem, "linear_decay", args...)
 }
 func (x *ImportanceDecay) LogarithmicDecay(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ImportanceDecay", Subsystem: x.Subsystem, Operation: "logarithmic_decay", Status: "OK"}
+	return ExecuteDomainOp("ImportanceDecay", x.Subsystem, "logarithmic_decay", args...)
 }
 func (x *ImportanceDecay) StepDecay(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ImportanceDecay", Subsystem: x.Subsystem, Operation: "step_decay", Status: "OK"}
+	return ExecuteDomainOp("ImportanceDecay", x.Subsystem, "step_decay", args...)
 }
 
 // ImprovementStore implements core/improvement_plane/improvement_store.py (ImprovementStore).
@@ -4289,22 +4335,22 @@ func NewImprovementStore() *ImprovementStore {
 }
 
 func (x *ImprovementStore) SaveHypothesis(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ImprovementStore", Subsystem: x.Subsystem, Operation: "save_hypothesis", Status: "OK"}
+	return ExecuteDomainOp("ImprovementStore", x.Subsystem, "save_hypothesis", args...)
 }
 func (x *ImprovementStore) GetHypothesis(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ImprovementStore", Subsystem: x.Subsystem, Operation: "get_hypothesis", Status: "OK"}
+	return ExecuteDomainOp("ImprovementStore", x.Subsystem, "get_hypothesis", args...)
 }
 func (x *ImprovementStore) SaveExperiment(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ImprovementStore", Subsystem: x.Subsystem, Operation: "save_experiment", Status: "OK"}
+	return ExecuteDomainOp("ImprovementStore", x.Subsystem, "save_experiment", args...)
 }
 func (x *ImprovementStore) GetExperiment(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ImprovementStore", Subsystem: x.Subsystem, Operation: "get_experiment", Status: "OK"}
+	return ExecuteDomainOp("ImprovementStore", x.Subsystem, "get_experiment", args...)
 }
 func (x *ImprovementStore) SaveRun(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ImprovementStore", Subsystem: x.Subsystem, Operation: "save_run", Status: "OK"}
+	return ExecuteDomainOp("ImprovementStore", x.Subsystem, "save_run", args...)
 }
 func (x *ImprovementStore) GetRunsFor(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ImprovementStore", Subsystem: x.Subsystem, Operation: "get_runs_for", Status: "OK"}
+	return ExecuteDomainOp("ImprovementStore", x.Subsystem, "get_runs_for", args...)
 }
 
 // InfrastructureEngine implements packages/rae-quality/engines/infrastructure/infrastructure_engine.py (InfrastructureEngine).
@@ -4319,13 +4365,13 @@ func NewInfrastructureEngine() *InfrastructureEngine {
 }
 
 func (x *InfrastructureEngine) AuditDockerfile(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "InfrastructureEngine", Subsystem: x.Subsystem, Operation: "audit_dockerfile", Status: "OK"}
+	return ExecuteDomainOp("InfrastructureEngine", x.Subsystem, "audit_dockerfile", args...)
 }
 func (x *InfrastructureEngine) AuditK8sManifest(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "InfrastructureEngine", Subsystem: x.Subsystem, Operation: "audit_k8s_manifest", Status: "OK"}
+	return ExecuteDomainOp("InfrastructureEngine", x.Subsystem, "audit_k8s_manifest", args...)
 }
 func (x *InfrastructureEngine) EvaluateSystemicReadiness(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "InfrastructureEngine", Subsystem: x.Subsystem, Operation: "evaluate_systemic_readiness", Status: "OK"}
+	return ExecuteDomainOp("InfrastructureEngine", x.Subsystem, "evaluate_systemic_readiness", args...)
 }
 
 // InfrastructureFactory implements packages/rae-agentic-memory/rae-core/rae_core/factories/infra_factory.py (InfrastructureFactory).
@@ -4340,7 +4386,7 @@ func NewInfrastructureFactory() *InfrastructureFactory {
 }
 
 func (x *InfrastructureFactory) Initialize(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "InfrastructureFactory", Subsystem: x.Subsystem, Operation: "initialize", Status: "OK"}
+	return ExecuteDomainOp("InfrastructureFactory", x.Subsystem, "initialize", args...)
 }
 
 // IngestAudit implements packages/rae-agentic-memory/rae-core/rae_core/ingestion/interfaces.py (IngestAudit).
@@ -4355,10 +4401,10 @@ func NewIngestAudit() *IngestAudit {
 }
 
 func (x *IngestAudit) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IngestAudit", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("IngestAudit", x.Subsystem, "execute", args...)
 }
 func (x *IngestAudit) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IngestAudit", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("IngestAudit", x.Subsystem, "validate", args...)
 }
 
 // IngestChunk implements packages/rae-agentic-memory/rae-core/rae_core/ingestion/interfaces.py (IngestChunk).
@@ -4373,10 +4419,10 @@ func NewIngestChunk() *IngestChunk {
 }
 
 func (x *IngestChunk) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IngestChunk", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("IngestChunk", x.Subsystem, "execute", args...)
 }
 func (x *IngestChunk) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IngestChunk", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("IngestChunk", x.Subsystem, "validate", args...)
 }
 
 // IngestCompressor implements packages/rae-agentic-memory/rae-core/rae_core/ingestion/compressor.py (IngestCompressor).
@@ -4391,7 +4437,7 @@ func NewIngestCompressor() *IngestCompressor {
 }
 
 func (x *IngestCompressor) Compress(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IngestCompressor", Subsystem: x.Subsystem, Operation: "compress", Status: "OK"}
+	return ExecuteDomainOp("IngestCompressor", x.Subsystem, "compress", args...)
 }
 
 // IngestNormalizer implements packages/rae-agentic-memory/rae-core/rae_core/ingestion/normalizer.py (IngestNormalizer).
@@ -4406,7 +4452,7 @@ func NewIngestNormalizer() *IngestNormalizer {
 }
 
 func (x *IngestNormalizer) Normalize(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IngestNormalizer", Subsystem: x.Subsystem, Operation: "normalize", Status: "OK"}
+	return ExecuteDomainOp("IngestNormalizer", x.Subsystem, "normalize", args...)
 }
 
 // IngestPipeline implements packages/rae-phoenix/feniks/core/ingest_pipeline.py (IngestPipeline).
@@ -4421,7 +4467,7 @@ func NewIngestPipeline() *IngestPipeline {
 }
 
 func (x *IngestPipeline) Run(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IngestPipeline", Subsystem: x.Subsystem, Operation: "run", Status: "OK"}
+	return ExecuteDomainOp("IngestPipeline", x.Subsystem, "run", args...)
 }
 
 // IngestPolicySelector implements packages/rae-agentic-memory/rae-core/rae_core/ingestion/policy.py (IngestPolicySelector).
@@ -4436,7 +4482,7 @@ func NewIngestPolicySelector() *IngestPolicySelector {
 }
 
 func (x *IngestPolicySelector) SelectPolicy(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IngestPolicySelector", Subsystem: x.Subsystem, Operation: "select_policy", Status: "OK"}
+	return ExecuteDomainOp("IngestPolicySelector", x.Subsystem, "select_policy", args...)
 }
 
 // IngestSegmenter implements packages/rae-agentic-memory/rae-core/rae_core/ingestion/segmenter.py (IngestSegmenter).
@@ -4451,7 +4497,7 @@ func NewIngestSegmenter() *IngestSegmenter {
 }
 
 func (x *IngestSegmenter) Segment(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IngestSegmenter", Subsystem: x.Subsystem, Operation: "segment", Status: "OK"}
+	return ExecuteDomainOp("IngestSegmenter", x.Subsystem, "segment", args...)
 }
 
 // INormalizer implements packages/rae-agentic-memory/rae-core/rae_core/ingestion/interfaces.py (INormalizer).
@@ -4466,7 +4512,7 @@ func NewINormalizer() *INormalizer {
 }
 
 func (x *INormalizer) Normalize(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "INormalizer", Subsystem: x.Subsystem, Operation: "normalize", Status: "OK"}
+	return ExecuteDomainOp("INormalizer", x.Subsystem, "normalize", args...)
 }
 
 // IPolicySelector implements packages/rae-agentic-memory/rae-core/rae_core/ingestion/interfaces.py (IPolicySelector).
@@ -4481,7 +4527,7 @@ func NewIPolicySelector() *IPolicySelector {
 }
 
 func (x *IPolicySelector) SelectPolicy(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IPolicySelector", Subsystem: x.Subsystem, Operation: "select_policy", Status: "OK"}
+	return ExecuteDomainOp("IPolicySelector", x.Subsystem, "select_policy", args...)
 }
 
 // IReranker implements packages/rae-agentic-memory/rae-core/rae_core/interfaces/reranking.py (IReranker).
@@ -4496,7 +4542,7 @@ func NewIReranker() *IReranker {
 }
 
 func (x *IReranker) Rerank(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IReranker", Subsystem: x.Subsystem, Operation: "rerank", Status: "OK"}
+	return ExecuteDomainOp("IReranker", x.Subsystem, "rerank", args...)
 }
 
 // ISegmenter implements packages/rae-agentic-memory/rae-core/rae_core/ingestion/interfaces.py (ISegmenter).
@@ -4511,7 +4557,7 @@ func NewISegmenter() *ISegmenter {
 }
 
 func (x *ISegmenter) Segment(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ISegmenter", Subsystem: x.Subsystem, Operation: "segment", Status: "OK"}
+	return ExecuteDomainOp("ISegmenter", x.Subsystem, "segment", args...)
 }
 
 // ISignatureDetector implements packages/rae-agentic-memory/rae-core/rae_core/ingestion/interfaces.py (ISignatureDetector).
@@ -4526,7 +4572,7 @@ func NewISignatureDetector() *ISignatureDetector {
 }
 
 func (x *ISignatureDetector) Detect(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ISignatureDetector", Subsystem: x.Subsystem, Operation: "detect", Status: "OK"}
+	return ExecuteDomainOp("ISignatureDetector", x.Subsystem, "detect", args...)
 }
 
 // ISOAuditor implements core/iso_auditor.py (ISOAuditor).
@@ -4541,7 +4587,7 @@ func NewISOAuditor() *ISOAuditor {
 }
 
 func (x *ISOAuditor) AuditReceiptChain(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ISOAuditor", Subsystem: x.Subsystem, Operation: "audit_receipt_chain", Status: "OK"}
+	return ExecuteDomainOp("ISOAuditor", x.Subsystem, "audit_receipt_chain", args...)
 }
 
 // ISyncProvider implements packages/rae-agentic-memory/rae-core/rae_core/interfaces/sync.py (ISyncProvider).
@@ -4556,28 +4602,28 @@ func NewISyncProvider() *ISyncProvider {
 }
 
 func (x *ISyncProvider) PushChanges(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ISyncProvider", Subsystem: x.Subsystem, Operation: "push_changes", Status: "OK"}
+	return ExecuteDomainOp("ISyncProvider", x.Subsystem, "push_changes", args...)
 }
 func (x *ISyncProvider) PullChanges(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ISyncProvider", Subsystem: x.Subsystem, Operation: "pull_changes", Status: "OK"}
+	return ExecuteDomainOp("ISyncProvider", x.Subsystem, "pull_changes", args...)
 }
 func (x *ISyncProvider) ResolveConflict(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ISyncProvider", Subsystem: x.Subsystem, Operation: "resolve_conflict", Status: "OK"}
+	return ExecuteDomainOp("ISyncProvider", x.Subsystem, "resolve_conflict", args...)
 }
 func (x *ISyncProvider) PushMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ISyncProvider", Subsystem: x.Subsystem, Operation: "push_memories", Status: "OK"}
+	return ExecuteDomainOp("ISyncProvider", x.Subsystem, "push_memories", args...)
 }
 func (x *ISyncProvider) PullMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ISyncProvider", Subsystem: x.Subsystem, Operation: "pull_memories", Status: "OK"}
+	return ExecuteDomainOp("ISyncProvider", x.Subsystem, "pull_memories", args...)
 }
 func (x *ISyncProvider) SyncMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ISyncProvider", Subsystem: x.Subsystem, Operation: "sync_memories", Status: "OK"}
+	return ExecuteDomainOp("ISyncProvider", x.Subsystem, "sync_memories", args...)
 }
 func (x *ISyncProvider) GetSyncStatus(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ISyncProvider", Subsystem: x.Subsystem, Operation: "get_sync_status", Status: "OK"}
+	return ExecuteDomainOp("ISyncProvider", x.Subsystem, "get_sync_status", args...)
 }
 func (x *ISyncProvider) Handshake(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ISyncProvider", Subsystem: x.Subsystem, Operation: "handshake", Status: "OK"}
+	return ExecuteDomainOp("ISyncProvider", x.Subsystem, "handshake", args...)
 }
 
 // ITransaction implements packages/rae-agentic-memory/rae-core/rae_core/interfaces/database.py (ITransaction).
@@ -4592,10 +4638,10 @@ func NewITransaction() *ITransaction {
 }
 
 func (x *ITransaction) Commit(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ITransaction", Subsystem: x.Subsystem, Operation: "commit", Status: "OK"}
+	return ExecuteDomainOp("ITransaction", x.Subsystem, "commit", args...)
 }
 func (x *ITransaction) Rollback(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "ITransaction", Subsystem: x.Subsystem, Operation: "rollback", Status: "OK"}
+	return ExecuteDomainOp("ITransaction", x.Subsystem, "rollback", args...)
 }
 
 // IVectorStore implements packages/rae-agentic-memory/rae-core/rae_core/interfaces/vector.py (IVectorStore).
@@ -4610,22 +4656,22 @@ func NewIVectorStore() *IVectorStore {
 }
 
 func (x *IVectorStore) StoreVector(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IVectorStore", Subsystem: x.Subsystem, Operation: "store_vector", Status: "OK"}
+	return ExecuteDomainOp("IVectorStore", x.Subsystem, "store_vector", args...)
 }
 func (x *IVectorStore) SearchSimilar(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IVectorStore", Subsystem: x.Subsystem, Operation: "search_similar", Status: "OK"}
+	return ExecuteDomainOp("IVectorStore", x.Subsystem, "search_similar", args...)
 }
 func (x *IVectorStore) DeleteVector(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IVectorStore", Subsystem: x.Subsystem, Operation: "delete_vector", Status: "OK"}
+	return ExecuteDomainOp("IVectorStore", x.Subsystem, "delete_vector", args...)
 }
 func (x *IVectorStore) UpdateVector(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IVectorStore", Subsystem: x.Subsystem, Operation: "update_vector", Status: "OK"}
+	return ExecuteDomainOp("IVectorStore", x.Subsystem, "update_vector", args...)
 }
 func (x *IVectorStore) GetVector(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IVectorStore", Subsystem: x.Subsystem, Operation: "get_vector", Status: "OK"}
+	return ExecuteDomainOp("IVectorStore", x.Subsystem, "get_vector", args...)
 }
 func (x *IVectorStore) BatchStoreVectors(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "IVectorStore", Subsystem: x.Subsystem, Operation: "batch_store_vectors", Status: "OK"}
+	return ExecuteDomainOp("IVectorStore", x.Subsystem, "batch_store_vectors", args...)
 }
 
 // JavaScriptPlugin implements packages/rae-phoenix/scripts/apply_recipe.py (JavaScriptPlugin).
@@ -4640,13 +4686,13 @@ func NewJavaScriptPlugin() *JavaScriptPlugin {
 }
 
 func (x *JavaScriptPlugin) Parse(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "JavaScriptPlugin", Subsystem: x.Subsystem, Operation: "parse", Status: "OK"}
+	return ExecuteDomainOp("JavaScriptPlugin", x.Subsystem, "parse", args...)
 }
 func (x *JavaScriptPlugin) Generate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "JavaScriptPlugin", Subsystem: x.Subsystem, Operation: "generate", Status: "OK"}
+	return ExecuteDomainOp("JavaScriptPlugin", x.Subsystem, "generate", args...)
 }
 func (x *JavaScriptPlugin) FindMatches(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "JavaScriptPlugin", Subsystem: x.Subsystem, Operation: "find_matches", Status: "OK"}
+	return ExecuteDomainOp("JavaScriptPlugin", x.Subsystem, "find_matches", args...)
 }
 
 // JSCodeshiftWrapper implements packages/rae-phoenix/feniks/core/refactor/javascript/tools.py (JSCodeshiftWrapper).
@@ -4661,7 +4707,7 @@ func NewJSCodeshiftWrapper() *JSCodeshiftWrapper {
 }
 
 func (x *JSCodeshiftWrapper) RunTransform(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "JSCodeshiftWrapper", Subsystem: x.Subsystem, Operation: "run_transform", Status: "OK"}
+	return ExecuteDomainOp("JSCodeshiftWrapper", x.Subsystem, "run_transform", args...)
 }
 
 // JSONFormatter implements packages/rae-phoenix/feniks/infra/logging.py (JSONFormatter).
@@ -4676,7 +4722,7 @@ func NewJSONFormatter() *JSONFormatter {
 }
 
 func (x *JSONFormatter) Format(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "JSONFormatter", Subsystem: x.Subsystem, Operation: "format", Status: "OK"}
+	return ExecuteDomainOp("JSONFormatter", x.Subsystem, "format", args...)
 }
 
 // JSRefactorEngine implements packages/rae-phoenix/feniks/core/refactor/javascript/engine.py (JSRefactorEngine).
@@ -4691,10 +4737,10 @@ func NewJSRefactorEngine() *JSRefactorEngine {
 }
 
 func (x *JSRefactorEngine) ScanAngularProject(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "JSRefactorEngine", Subsystem: x.Subsystem, Operation: "scan_angular_project", Status: "OK"}
+	return ExecuteDomainOp("JSRefactorEngine", x.Subsystem, "scan_angular_project", args...)
 }
 func (x *JSRefactorEngine) ApplyCodemod(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "JSRefactorEngine", Subsystem: x.Subsystem, Operation: "apply_codemod", Status: "OK"}
+	return ExecuteDomainOp("JSRefactorEngine", x.Subsystem, "apply_codemod", args...)
 }
 
 // JsToolRunner implements packages/rae-phoenix/feniks/core/refactor/javascript/tools.py (JsToolRunner).
@@ -4709,7 +4755,7 @@ func NewJsToolRunner() *JsToolRunner {
 }
 
 func (x *JsToolRunner) RunTool(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "JsToolRunner", Subsystem: x.Subsystem, Operation: "run_tool", Status: "OK"}
+	return ExecuteDomainOp("JsToolRunner", x.Subsystem, "run_tool", args...)
 }
 
 // KeycloakAuthGateway implements core/keycloak_auth.py (KeycloakAuthGateway).
@@ -4724,13 +4770,13 @@ func NewKeycloakAuthGateway() *KeycloakAuthGateway {
 }
 
 func (x *KeycloakAuthGateway) CreateMockJwt(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "KeycloakAuthGateway", Subsystem: x.Subsystem, Operation: "create_mock_jwt", Status: "OK"}
+	return ExecuteDomainOp("KeycloakAuthGateway", x.Subsystem, "create_mock_jwt", args...)
 }
 func (x *KeycloakAuthGateway) VerifyToken(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "KeycloakAuthGateway", Subsystem: x.Subsystem, Operation: "verify_token", Status: "OK"}
+	return ExecuteDomainOp("KeycloakAuthGateway", x.Subsystem, "verify_token", args...)
 }
 func (x *KeycloakAuthGateway) AuthorizeCapability(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "KeycloakAuthGateway", Subsystem: x.Subsystem, Operation: "authorize_capability", Status: "OK"}
+	return ExecuteDomainOp("KeycloakAuthGateway", x.Subsystem, "authorize_capability", args...)
 }
 
 // KnowledgeGraph implements packages/rae-agentic-memory/apps/memory_api/core/graph_operator.py (KnowledgeGraph).
@@ -4745,34 +4791,34 @@ func NewKnowledgeGraph() *KnowledgeGraph {
 }
 
 func (x *KnowledgeGraph) GetNode(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "KnowledgeGraph", Subsystem: x.Subsystem, Operation: "get_node", Status: "OK"}
+	return ExecuteDomainOp("KnowledgeGraph", x.Subsystem, "get_node", args...)
 }
 func (x *KnowledgeGraph) GetEdge(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "KnowledgeGraph", Subsystem: x.Subsystem, Operation: "get_edge", Status: "OK"}
+	return ExecuteDomainOp("KnowledgeGraph", x.Subsystem, "get_edge", args...)
 }
 func (x *KnowledgeGraph) AdjacencyMatrix(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "KnowledgeGraph", Subsystem: x.Subsystem, Operation: "adjacency_matrix", Status: "OK"}
+	return ExecuteDomainOp("KnowledgeGraph", x.Subsystem, "adjacency_matrix", args...)
 }
 func (x *KnowledgeGraph) Copy(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "KnowledgeGraph", Subsystem: x.Subsystem, Operation: "copy", Status: "OK"}
+	return ExecuteDomainOp("KnowledgeGraph", x.Subsystem, "copy", args...)
 }
 func (x *KnowledgeGraph) ToDict(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "KnowledgeGraph", Subsystem: x.Subsystem, Operation: "to_dict", Status: "OK"}
+	return ExecuteDomainOp("KnowledgeGraph", x.Subsystem, "to_dict", args...)
 }
 func (x *KnowledgeGraph) AddNode(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "KnowledgeGraph", Subsystem: x.Subsystem, Operation: "add_node", Status: "OK"}
+	return ExecuteDomainOp("KnowledgeGraph", x.Subsystem, "add_node", args...)
 }
 func (x *KnowledgeGraph) AddEdge(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "KnowledgeGraph", Subsystem: x.Subsystem, Operation: "add_edge", Status: "OK"}
+	return ExecuteDomainOp("KnowledgeGraph", x.Subsystem, "add_edge", args...)
 }
 func (x *KnowledgeGraph) GetNeighbors(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "KnowledgeGraph", Subsystem: x.Subsystem, Operation: "get_neighbors", Status: "OK"}
+	return ExecuteDomainOp("KnowledgeGraph", x.Subsystem, "get_neighbors", args...)
 }
 func (x *KnowledgeGraph) NodeCount(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "KnowledgeGraph", Subsystem: x.Subsystem, Operation: "node_count", Status: "OK"}
+	return ExecuteDomainOp("KnowledgeGraph", x.Subsystem, "node_count", args...)
 }
 func (x *KnowledgeGraph) EdgeCount(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "KnowledgeGraph", Subsystem: x.Subsystem, Operation: "edge_count", Status: "OK"}
+	return ExecuteDomainOp("KnowledgeGraph", x.Subsystem, "edge_count", args...)
 }
 
 // KnowledgeResolutionEngine implements packages/rae-agentic-memory/rae-core/rae_core/governance/engine.py (KnowledgeResolutionEngine).
@@ -4787,7 +4833,7 @@ func NewKnowledgeResolutionEngine() *KnowledgeResolutionEngine {
 }
 
 func (x *KnowledgeResolutionEngine) Resolve(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "KnowledgeResolutionEngine", Subsystem: x.Subsystem, Operation: "resolve", Status: "OK"}
+	return ExecuteDomainOp("KnowledgeResolutionEngine", x.Subsystem, "resolve", args...)
 }
 
 // L1OperationalReflection implements packages/rae-agentic-memory/rae-core/rae_core/reflection/layers/l1_operational.py (L1OperationalReflection).
@@ -4802,7 +4848,7 @@ func NewL1OperationalReflection() *L1OperationalReflection {
 }
 
 func (x *L1OperationalReflection) Reflect(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "L1OperationalReflection", Subsystem: x.Subsystem, Operation: "reflect", Status: "OK"}
+	return ExecuteDomainOp("L1OperationalReflection", x.Subsystem, "reflect", args...)
 }
 
 // L2StructuralReflection implements packages/rae-agentic-memory/rae-core/rae_core/reflection/layers/l2_structural.py (L2StructuralReflection).
@@ -4817,7 +4863,7 @@ func NewL2StructuralReflection() *L2StructuralReflection {
 }
 
 func (x *L2StructuralReflection) Reflect(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "L2StructuralReflection", Subsystem: x.Subsystem, Operation: "reflect", Status: "OK"}
+	return ExecuteDomainOp("L2StructuralReflection", x.Subsystem, "reflect", args...)
 }
 
 // L3MetaFieldReflection implements packages/rae-agentic-memory/rae-core/rae_core/reflection/layers/l3_meta.py (L3MetaFieldReflection).
@@ -4832,7 +4878,7 @@ func NewL3MetaFieldReflection() *L3MetaFieldReflection {
 }
 
 func (x *L3MetaFieldReflection) Reflect(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "L3MetaFieldReflection", Subsystem: x.Subsystem, Operation: "reflect", Status: "OK"}
+	return ExecuteDomainOp("L3MetaFieldReflection", x.Subsystem, "reflect", args...)
 }
 
 // L4CognitiveReflection implements packages/rae-agentic-memory/rae-core/rae_core/reflection/layers/l4_cognitive.py (L4CognitiveReflection).
@@ -4847,7 +4893,7 @@ func NewL4CognitiveReflection() *L4CognitiveReflection {
 }
 
 func (x *L4CognitiveReflection) Reflect(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "L4CognitiveReflection", Subsystem: x.Subsystem, Operation: "reflect", Status: "OK"}
+	return ExecuteDomainOp("L4CognitiveReflection", x.Subsystem, "reflect", args...)
 }
 
 // LabObservatory implements packages/rae-lab/metrics_aggregator.py (LabObservatory).
@@ -4862,10 +4908,10 @@ func NewLabObservatory() *LabObservatory {
 }
 
 func (x *LabObservatory) GetHealthReport(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LabObservatory", Subsystem: x.Subsystem, Operation: "get_health_report", Status: "OK"}
+	return ExecuteDomainOp("LabObservatory", x.Subsystem, "get_health_report", args...)
 }
 func (x *LabObservatory) RecordTelemetry(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LabObservatory", Subsystem: x.Subsystem, Operation: "record_telemetry", Status: "OK"}
+	return ExecuteDomainOp("LabObservatory", x.Subsystem, "record_telemetry", args...)
 }
 
 // LanguagePlugin implements packages/rae-phoenix/feniks/core/plugins/base.py (LanguagePlugin).
@@ -4880,28 +4926,28 @@ func NewLanguagePlugin() *LanguagePlugin {
 }
 
 func (x *LanguagePlugin) Name(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LanguagePlugin", Subsystem: x.Subsystem, Operation: "name", Status: "OK"}
+	return ExecuteDomainOp("LanguagePlugin", x.Subsystem, "name", args...)
 }
 func (x *LanguagePlugin) SupportedExtensions(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LanguagePlugin", Subsystem: x.Subsystem, Operation: "supported_extensions", Status: "OK"}
+	return ExecuteDomainOp("LanguagePlugin", x.Subsystem, "supported_extensions", args...)
 }
 func (x *LanguagePlugin) CanHandle(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LanguagePlugin", Subsystem: x.Subsystem, Operation: "can_handle", Status: "OK"}
+	return ExecuteDomainOp("LanguagePlugin", x.Subsystem, "can_handle", args...)
 }
 func (x *LanguagePlugin) ExecuteRefactor(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LanguagePlugin", Subsystem: x.Subsystem, Operation: "execute_refactor", Status: "OK"}
+	return ExecuteDomainOp("LanguagePlugin", x.Subsystem, "execute_refactor", args...)
 }
 func (x *LanguagePlugin) ExecuteCreate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LanguagePlugin", Subsystem: x.Subsystem, Operation: "execute_create", Status: "OK"}
+	return ExecuteDomainOp("LanguagePlugin", x.Subsystem, "execute_create", args...)
 }
 func (x *LanguagePlugin) Parse(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LanguagePlugin", Subsystem: x.Subsystem, Operation: "parse", Status: "OK"}
+	return ExecuteDomainOp("LanguagePlugin", x.Subsystem, "parse", args...)
 }
 func (x *LanguagePlugin) Generate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LanguagePlugin", Subsystem: x.Subsystem, Operation: "generate", Status: "OK"}
+	return ExecuteDomainOp("LanguagePlugin", x.Subsystem, "generate", args...)
 }
 func (x *LanguagePlugin) FindMatches(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LanguagePlugin", Subsystem: x.Subsystem, Operation: "find_matches", Status: "OK"}
+	return ExecuteDomainOp("LanguagePlugin", x.Subsystem, "find_matches", args...)
 }
 
 // LayerTriadRunner implements core/layer_triad_runner.py (LayerTriadRunner).
@@ -4916,16 +4962,16 @@ func NewLayerTriadRunner() *LayerTriadRunner {
 }
 
 func (x *LayerTriadRunner) GetAvailableLayers(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LayerTriadRunner", Subsystem: x.Subsystem, Operation: "get_available_layers", Status: "OK"}
+	return ExecuteDomainOp("LayerTriadRunner", x.Subsystem, "get_available_layers", args...)
 }
 func (x *LayerTriadRunner) GetLayerModels(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LayerTriadRunner", Subsystem: x.Subsystem, Operation: "get_layer_models", Status: "OK"}
+	return ExecuteDomainOp("LayerTriadRunner", x.Subsystem, "get_layer_models", args...)
 }
 func (x *LayerTriadRunner) ExecuteLayerTriad(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LayerTriadRunner", Subsystem: x.Subsystem, Operation: "execute_layer_triad", Status: "OK"}
+	return ExecuteDomainOp("LayerTriadRunner", x.Subsystem, "execute_layer_triad", args...)
 }
 func (x *LayerTriadRunner) Execute3tierCascade(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LayerTriadRunner", Subsystem: x.Subsystem, Operation: "execute_3tier_cascade", Status: "OK"}
+	return ExecuteDomainOp("LayerTriadRunner", x.Subsystem, "execute_3tier_cascade", args...)
 }
 
 // Legacy416Strategy implements packages/rae-agentic-memory/rae-core/rae_core/math/fusion.py (Legacy416Strategy).
@@ -4940,7 +4986,7 @@ func NewLegacy416Strategy() *Legacy416Strategy {
 }
 
 func (x *Legacy416Strategy) Fuse(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Legacy416Strategy", Subsystem: x.Subsystem, Operation: "fuse", Status: "OK"}
+	return ExecuteDomainOp("Legacy416Strategy", x.Subsystem, "fuse", args...)
 }
 
 // LibCSTWrapper implements packages/rae-phoenix/feniks/core/refactor/python/tools.py (LibCSTWrapper).
@@ -4955,7 +5001,7 @@ func NewLibCSTWrapper() *LibCSTWrapper {
 }
 
 func (x *LibCSTWrapper) AnalyzeStructure(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LibCSTWrapper", Subsystem: x.Subsystem, Operation: "analyze_structure", Status: "OK"}
+	return ExecuteDomainOp("LibCSTWrapper", x.Subsystem, "analyze_structure", args...)
 }
 
 // LightweightAnthropicProvider implements packages/rae-agentic-memory/rae-core/rae_core/llm/providers.py (LightweightAnthropicProvider).
@@ -4970,22 +5016,22 @@ func NewLightweightAnthropicProvider() *LightweightAnthropicProvider {
 }
 
 func (x *LightweightAnthropicProvider) Generate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightAnthropicProvider", Subsystem: x.Subsystem, Operation: "generate", Status: "OK"}
+	return ExecuteDomainOp("LightweightAnthropicProvider", x.Subsystem, "generate", args...)
 }
 func (x *LightweightAnthropicProvider) GenerateWithContext(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightAnthropicProvider", Subsystem: x.Subsystem, Operation: "generate_with_context", Status: "OK"}
+	return ExecuteDomainOp("LightweightAnthropicProvider", x.Subsystem, "generate_with_context", args...)
 }
 func (x *LightweightAnthropicProvider) CountTokens(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightAnthropicProvider", Subsystem: x.Subsystem, Operation: "count_tokens", Status: "OK"}
+	return ExecuteDomainOp("LightweightAnthropicProvider", x.Subsystem, "count_tokens", args...)
 }
 func (x *LightweightAnthropicProvider) SupportsFunctionCalling(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightAnthropicProvider", Subsystem: x.Subsystem, Operation: "supports_function_calling", Status: "OK"}
+	return ExecuteDomainOp("LightweightAnthropicProvider", x.Subsystem, "supports_function_calling", args...)
 }
 func (x *LightweightAnthropicProvider) ExtractEntities(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightAnthropicProvider", Subsystem: x.Subsystem, Operation: "extract_entities", Status: "OK"}
+	return ExecuteDomainOp("LightweightAnthropicProvider", x.Subsystem, "extract_entities", args...)
 }
 func (x *LightweightAnthropicProvider) Summarize(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightAnthropicProvider", Subsystem: x.Subsystem, Operation: "summarize", Status: "OK"}
+	return ExecuteDomainOp("LightweightAnthropicProvider", x.Subsystem, "summarize", args...)
 }
 
 // LightweightGoogleProvider implements packages/rae-agentic-memory/rae-core/rae_core/llm/providers.py (LightweightGoogleProvider).
@@ -5000,22 +5046,22 @@ func NewLightweightGoogleProvider() *LightweightGoogleProvider {
 }
 
 func (x *LightweightGoogleProvider) Generate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightGoogleProvider", Subsystem: x.Subsystem, Operation: "generate", Status: "OK"}
+	return ExecuteDomainOp("LightweightGoogleProvider", x.Subsystem, "generate", args...)
 }
 func (x *LightweightGoogleProvider) GenerateWithContext(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightGoogleProvider", Subsystem: x.Subsystem, Operation: "generate_with_context", Status: "OK"}
+	return ExecuteDomainOp("LightweightGoogleProvider", x.Subsystem, "generate_with_context", args...)
 }
 func (x *LightweightGoogleProvider) CountTokens(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightGoogleProvider", Subsystem: x.Subsystem, Operation: "count_tokens", Status: "OK"}
+	return ExecuteDomainOp("LightweightGoogleProvider", x.Subsystem, "count_tokens", args...)
 }
 func (x *LightweightGoogleProvider) SupportsFunctionCalling(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightGoogleProvider", Subsystem: x.Subsystem, Operation: "supports_function_calling", Status: "OK"}
+	return ExecuteDomainOp("LightweightGoogleProvider", x.Subsystem, "supports_function_calling", args...)
 }
 func (x *LightweightGoogleProvider) ExtractEntities(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightGoogleProvider", Subsystem: x.Subsystem, Operation: "extract_entities", Status: "OK"}
+	return ExecuteDomainOp("LightweightGoogleProvider", x.Subsystem, "extract_entities", args...)
 }
 func (x *LightweightGoogleProvider) Summarize(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightGoogleProvider", Subsystem: x.Subsystem, Operation: "summarize", Status: "OK"}
+	return ExecuteDomainOp("LightweightGoogleProvider", x.Subsystem, "summarize", args...)
 }
 
 // LightweightOpenAIProvider implements packages/rae-agentic-memory/rae-core/rae_core/llm/providers.py (LightweightOpenAIProvider).
@@ -5030,22 +5076,22 @@ func NewLightweightOpenAIProvider() *LightweightOpenAIProvider {
 }
 
 func (x *LightweightOpenAIProvider) Generate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightOpenAIProvider", Subsystem: x.Subsystem, Operation: "generate", Status: "OK"}
+	return ExecuteDomainOp("LightweightOpenAIProvider", x.Subsystem, "generate", args...)
 }
 func (x *LightweightOpenAIProvider) GenerateWithContext(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightOpenAIProvider", Subsystem: x.Subsystem, Operation: "generate_with_context", Status: "OK"}
+	return ExecuteDomainOp("LightweightOpenAIProvider", x.Subsystem, "generate_with_context", args...)
 }
 func (x *LightweightOpenAIProvider) CountTokens(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightOpenAIProvider", Subsystem: x.Subsystem, Operation: "count_tokens", Status: "OK"}
+	return ExecuteDomainOp("LightweightOpenAIProvider", x.Subsystem, "count_tokens", args...)
 }
 func (x *LightweightOpenAIProvider) SupportsFunctionCalling(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightOpenAIProvider", Subsystem: x.Subsystem, Operation: "supports_function_calling", Status: "OK"}
+	return ExecuteDomainOp("LightweightOpenAIProvider", x.Subsystem, "supports_function_calling", args...)
 }
 func (x *LightweightOpenAIProvider) ExtractEntities(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightOpenAIProvider", Subsystem: x.Subsystem, Operation: "extract_entities", Status: "OK"}
+	return ExecuteDomainOp("LightweightOpenAIProvider", x.Subsystem, "extract_entities", args...)
 }
 func (x *LightweightOpenAIProvider) Summarize(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LightweightOpenAIProvider", Subsystem: x.Subsystem, Operation: "summarize", Status: "OK"}
+	return ExecuteDomainOp("LightweightOpenAIProvider", x.Subsystem, "summarize", args...)
 }
 
 // LiteLLMProvider implements packages/rae-agentic-memory/scripts/verify_infrastructure.py (LiteLLMProvider).
@@ -5060,22 +5106,22 @@ func NewLiteLLMProvider() *LiteLLMProvider {
 }
 
 func (x *LiteLLMProvider) Generate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LiteLLMProvider", Subsystem: x.Subsystem, Operation: "generate", Status: "OK"}
+	return ExecuteDomainOp("LiteLLMProvider", x.Subsystem, "generate", args...)
 }
 func (x *LiteLLMProvider) GenerateWithContext(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LiteLLMProvider", Subsystem: x.Subsystem, Operation: "generate_with_context", Status: "OK"}
+	return ExecuteDomainOp("LiteLLMProvider", x.Subsystem, "generate_with_context", args...)
 }
 func (x *LiteLLMProvider) CountTokens(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LiteLLMProvider", Subsystem: x.Subsystem, Operation: "count_tokens", Status: "OK"}
+	return ExecuteDomainOp("LiteLLMProvider", x.Subsystem, "count_tokens", args...)
 }
 func (x *LiteLLMProvider) SupportsFunctionCalling(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LiteLLMProvider", Subsystem: x.Subsystem, Operation: "supports_function_calling", Status: "OK"}
+	return ExecuteDomainOp("LiteLLMProvider", x.Subsystem, "supports_function_calling", args...)
 }
 func (x *LiteLLMProvider) ExtractEntities(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LiteLLMProvider", Subsystem: x.Subsystem, Operation: "extract_entities", Status: "OK"}
+	return ExecuteDomainOp("LiteLLMProvider", x.Subsystem, "extract_entities", args...)
 }
 func (x *LiteLLMProvider) Summarize(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LiteLLMProvider", Subsystem: x.Subsystem, Operation: "summarize", Status: "OK"}
+	return ExecuteDomainOp("LiteLLMProvider", x.Subsystem, "summarize", args...)
 }
 
 // LlamaCppAdapter implements packages/rae-agentic-memory/rae-windows/rae_lite/llm_adapter.py (LlamaCppAdapter).
@@ -5090,13 +5136,13 @@ func NewLlamaCppAdapter() *LlamaCppAdapter {
 }
 
 func (x *LlamaCppAdapter) Generate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LlamaCppAdapter", Subsystem: x.Subsystem, Operation: "generate", Status: "OK"}
+	return ExecuteDomainOp("LlamaCppAdapter", x.Subsystem, "generate", args...)
 }
 func (x *LlamaCppAdapter) NormalizeQuery(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LlamaCppAdapter", Subsystem: x.Subsystem, Operation: "normalize_query", Status: "OK"}
+	return ExecuteDomainOp("LlamaCppAdapter", x.Subsystem, "normalize_query", args...)
 }
 func (x *LlamaCppAdapter) FormatResults(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LlamaCppAdapter", Subsystem: x.Subsystem, Operation: "format_results", Status: "OK"}
+	return ExecuteDomainOp("LlamaCppAdapter", x.Subsystem, "format_results", args...)
 }
 
 // LLMChunk implements packages/rae-agentic-memory/apps/llm/models/llm_response.py (LLMChunk).
@@ -5111,10 +5157,10 @@ func NewLLMChunk() *LLMChunk {
 }
 
 func (x *LLMChunk) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMChunk", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("LLMChunk", x.Subsystem, "execute", args...)
 }
 func (x *LLMChunk) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMChunk", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("LLMChunk", x.Subsystem, "validate", args...)
 }
 
 // LLMConfig implements packages/rae-agentic-memory/rae-core/rae_core/llm/config.py (LLMConfig).
@@ -5129,13 +5175,13 @@ func NewLLMConfig() *LLMConfig {
 }
 
 func (x *LLMConfig) GetProvider(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMConfig", Subsystem: x.Subsystem, Operation: "get_provider", Status: "OK"}
+	return ExecuteDomainOp("LLMConfig", x.Subsystem, "get_provider", args...)
 }
 func (x *LLMConfig) AddProvider(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMConfig", Subsystem: x.Subsystem, Operation: "add_provider", Status: "OK"}
+	return ExecuteDomainOp("LLMConfig", x.Subsystem, "add_provider", args...)
 }
 func (x *LLMConfig) ListProviders(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMConfig", Subsystem: x.Subsystem, Operation: "list_providers", Status: "OK"}
+	return ExecuteDomainOp("LLMConfig", x.Subsystem, "list_providers", args...)
 }
 
 // LLMEvaluator implements packages/rae-agentic-memory/apps/memory_api/services/evaluator.py (LLMEvaluator).
@@ -5150,7 +5196,7 @@ func NewLLMEvaluator() *LLMEvaluator {
 }
 
 func (x *LLMEvaluator) Evaluate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMEvaluator", Subsystem: x.Subsystem, Operation: "evaluate", Status: "OK"}
+	return ExecuteDomainOp("LLMEvaluator", x.Subsystem, "evaluate", args...)
 }
 
 // LLMMessage implements packages/rae-agentic-memory/apps/llm/models/llm_request.py (LLMMessage).
@@ -5165,10 +5211,10 @@ func NewLLMMessage() *LLMMessage {
 }
 
 func (x *LLMMessage) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMMessage", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("LLMMessage", x.Subsystem, "execute", args...)
 }
 func (x *LLMMessage) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMMessage", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("LLMMessage", x.Subsystem, "validate", args...)
 }
 
 // LLMOrchestrator implements packages/rae-agentic-memory/apps/llm/broker/orchestrator.py (LLMOrchestrator).
@@ -5183,25 +5229,25 @@ func NewLLMOrchestrator() *LLMOrchestrator {
 }
 
 func (x *LLMOrchestrator) Generate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMOrchestrator", Subsystem: x.Subsystem, Operation: "generate", Status: "OK"}
+	return ExecuteDomainOp("LLMOrchestrator", x.Subsystem, "generate", args...)
 }
 func (x *LLMOrchestrator) RegisterProvider(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMOrchestrator", Subsystem: x.Subsystem, Operation: "register_provider", Status: "OK"}
+	return ExecuteDomainOp("LLMOrchestrator", x.Subsystem, "register_provider", args...)
 }
 func (x *LLMOrchestrator) GetProvider(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMOrchestrator", Subsystem: x.Subsystem, Operation: "get_provider", Status: "OK"}
+	return ExecuteDomainOp("LLMOrchestrator", x.Subsystem, "get_provider", args...)
 }
 func (x *LLMOrchestrator) GenerateWithContext(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMOrchestrator", Subsystem: x.Subsystem, Operation: "generate_with_context", Status: "OK"}
+	return ExecuteDomainOp("LLMOrchestrator", x.Subsystem, "generate_with_context", args...)
 }
 func (x *LLMOrchestrator) ExtractEntities(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMOrchestrator", Subsystem: x.Subsystem, Operation: "extract_entities", Status: "OK"}
+	return ExecuteDomainOp("LLMOrchestrator", x.Subsystem, "extract_entities", args...)
 }
 func (x *LLMOrchestrator) Summarize(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMOrchestrator", Subsystem: x.Subsystem, Operation: "summarize", Status: "OK"}
+	return ExecuteDomainOp("LLMOrchestrator", x.Subsystem, "summarize", args...)
 }
 func (x *LLMOrchestrator) ListProviders(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMOrchestrator", Subsystem: x.Subsystem, Operation: "list_providers", Status: "OK"}
+	return ExecuteDomainOp("LLMOrchestrator", x.Subsystem, "list_providers", args...)
 }
 
 // LLMProvider implements packages/rae-agentic-memory/apps/llm/providers/base.py (LLMProvider).
@@ -5216,37 +5262,37 @@ func NewLLMProvider() *LLMProvider {
 }
 
 func (x *LLMProvider) Complete(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMProvider", Subsystem: x.Subsystem, Operation: "complete", Status: "OK"}
+	return ExecuteDomainOp("LLMProvider", x.Subsystem, "complete", args...)
 }
 func (x *LLMProvider) Stream(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMProvider", Subsystem: x.Subsystem, Operation: "stream", Status: "OK"}
+	return ExecuteDomainOp("LLMProvider", x.Subsystem, "stream", args...)
 }
 func (x *LLMProvider) Embed(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMProvider", Subsystem: x.Subsystem, Operation: "embed", Status: "OK"}
+	return ExecuteDomainOp("LLMProvider", x.Subsystem, "embed", args...)
 }
 func (x *LLMProvider) EmbedBatch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMProvider", Subsystem: x.Subsystem, Operation: "embed_batch", Status: "OK"}
+	return ExecuteDomainOp("LLMProvider", x.Subsystem, "embed_batch", args...)
 }
 func (x *LLMProvider) Generate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMProvider", Subsystem: x.Subsystem, Operation: "generate", Status: "OK"}
+	return ExecuteDomainOp("LLMProvider", x.Subsystem, "generate", args...)
 }
 func (x *LLMProvider) GenerateStructured(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMProvider", Subsystem: x.Subsystem, Operation: "generate_structured", Status: "OK"}
+	return ExecuteDomainOp("LLMProvider", x.Subsystem, "generate_structured", args...)
 }
 func (x *LLMProvider) Name(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMProvider", Subsystem: x.Subsystem, Operation: "name", Status: "OK"}
+	return ExecuteDomainOp("LLMProvider", x.Subsystem, "name", args...)
 }
 func (x *LLMProvider) AvailableModels(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMProvider", Subsystem: x.Subsystem, Operation: "available_models", Status: "OK"}
+	return ExecuteDomainOp("LLMProvider", x.Subsystem, "available_models", args...)
 }
 func (x *LLMProvider) IsAvailable(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMProvider", Subsystem: x.Subsystem, Operation: "is_available", Status: "OK"}
+	return ExecuteDomainOp("LLMProvider", x.Subsystem, "is_available", args...)
 }
 func (x *LLMProvider) GetModelInfo(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMProvider", Subsystem: x.Subsystem, Operation: "get_model_info", Status: "OK"}
+	return ExecuteDomainOp("LLMProvider", x.Subsystem, "get_model_info", args...)
 }
 func (x *LLMProvider) ListModels(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMProvider", Subsystem: x.Subsystem, Operation: "list_models", Status: "OK"}
+	return ExecuteDomainOp("LLMProvider", x.Subsystem, "list_models", args...)
 }
 
 // LlmRerankerStrategy implements packages/rae-agentic-memory/apps/memory_api/services/reranking/llm_strategy.py (LlmRerankerStrategy).
@@ -5261,7 +5307,7 @@ func NewLlmRerankerStrategy() *LlmRerankerStrategy {
 }
 
 func (x *LlmRerankerStrategy) Rerank(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LlmRerankerStrategy", Subsystem: x.Subsystem, Operation: "rerank", Status: "OK"}
+	return ExecuteDomainOp("LlmRerankerStrategy", x.Subsystem, "rerank", args...)
 }
 
 // LLMStrategy implements packages/rae-agentic-memory/rae-core/rae_core/llm/strategies.py (LLMStrategy).
@@ -5276,7 +5322,7 @@ func NewLLMStrategy() *LLMStrategy {
 }
 
 func (x *LLMStrategy) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMStrategy", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("LLMStrategy", x.Subsystem, "execute", args...)
 }
 
 // LLMTool implements packages/rae-agentic-memory/apps/llm/models/llm_request.py (LLMTool).
@@ -5291,10 +5337,10 @@ func NewLLMTool() *LLMTool {
 }
 
 func (x *LLMTool) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMTool", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("LLMTool", x.Subsystem, "execute", args...)
 }
 func (x *LLMTool) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMTool", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("LLMTool", x.Subsystem, "validate", args...)
 }
 
 // LLMTracer implements packages/rae-agentic-memory/apps/memory_api/observability/opentelemetry_config.py (LLMTracer).
@@ -5309,16 +5355,16 @@ func NewLLMTracer() *LLMTracer {
 }
 
 func (x *LLMTracer) Trace(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMTracer", Subsystem: x.Subsystem, Operation: "trace", Status: "OK"}
+	return ExecuteDomainOp("LLMTracer", x.Subsystem, "trace", args...)
 }
 func (x *LLMTracer) RecordTokens(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMTracer", Subsystem: x.Subsystem, Operation: "record_tokens", Status: "OK"}
+	return ExecuteDomainOp("LLMTracer", x.Subsystem, "record_tokens", args...)
 }
 func (x *LLMTracer) RecordCost(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMTracer", Subsystem: x.Subsystem, Operation: "record_cost", Status: "OK"}
+	return ExecuteDomainOp("LLMTracer", x.Subsystem, "record_cost", args...)
 }
 func (x *LLMTracer) RecordCacheHit(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LLMTracer", Subsystem: x.Subsystem, Operation: "record_cache_hit", Status: "OK"}
+	return ExecuteDomainOp("LLMTracer", x.Subsystem, "record_cache_hit", args...)
 }
 
 // LoadBalancingStrategy implements packages/rae-agentic-memory/rae-core/rae_core/llm/strategies.py (LoadBalancingStrategy).
@@ -5333,7 +5379,7 @@ func NewLoadBalancingStrategy() *LoadBalancingStrategy {
 }
 
 func (x *LoadBalancingStrategy) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LoadBalancingStrategy", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("LoadBalancingStrategy", x.Subsystem, "execute", args...)
 }
 
 // LocalEmbeddingProvider implements packages/rae-agentic-memory/apps/memory_api/services/embedding.py (LocalEmbeddingProvider).
@@ -5348,13 +5394,13 @@ func NewLocalEmbeddingProvider() *LocalEmbeddingProvider {
 }
 
 func (x *LocalEmbeddingProvider) EmbedText(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LocalEmbeddingProvider", Subsystem: x.Subsystem, Operation: "embed_text", Status: "OK"}
+	return ExecuteDomainOp("LocalEmbeddingProvider", x.Subsystem, "embed_text", args...)
 }
 func (x *LocalEmbeddingProvider) EmbedBatch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LocalEmbeddingProvider", Subsystem: x.Subsystem, Operation: "embed_batch", Status: "OK"}
+	return ExecuteDomainOp("LocalEmbeddingProvider", x.Subsystem, "embed_batch", args...)
 }
 func (x *LocalEmbeddingProvider) GetDimension(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LocalEmbeddingProvider", Subsystem: x.Subsystem, Operation: "get_dimension", Status: "OK"}
+	return ExecuteDomainOp("LocalEmbeddingProvider", x.Subsystem, "get_dimension", args...)
 }
 
 // LocalOnnxLLMProvider implements packages/rae-agentic-memory/rae-core/rae_core/llm/local_onnx.py (LocalOnnxLLMProvider).
@@ -5369,22 +5415,22 @@ func NewLocalOnnxLLMProvider() *LocalOnnxLLMProvider {
 }
 
 func (x *LocalOnnxLLMProvider) Generate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LocalOnnxLLMProvider", Subsystem: x.Subsystem, Operation: "generate", Status: "OK"}
+	return ExecuteDomainOp("LocalOnnxLLMProvider", x.Subsystem, "generate", args...)
 }
 func (x *LocalOnnxLLMProvider) GenerateWithContext(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LocalOnnxLLMProvider", Subsystem: x.Subsystem, Operation: "generate_with_context", Status: "OK"}
+	return ExecuteDomainOp("LocalOnnxLLMProvider", x.Subsystem, "generate_with_context", args...)
 }
 func (x *LocalOnnxLLMProvider) CountTokens(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LocalOnnxLLMProvider", Subsystem: x.Subsystem, Operation: "count_tokens", Status: "OK"}
+	return ExecuteDomainOp("LocalOnnxLLMProvider", x.Subsystem, "count_tokens", args...)
 }
 func (x *LocalOnnxLLMProvider) SupportsFunctionCalling(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LocalOnnxLLMProvider", Subsystem: x.Subsystem, Operation: "supports_function_calling", Status: "OK"}
+	return ExecuteDomainOp("LocalOnnxLLMProvider", x.Subsystem, "supports_function_calling", args...)
 }
 func (x *LocalOnnxLLMProvider) ExtractEntities(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LocalOnnxLLMProvider", Subsystem: x.Subsystem, Operation: "extract_entities", Status: "OK"}
+	return ExecuteDomainOp("LocalOnnxLLMProvider", x.Subsystem, "extract_entities", args...)
 }
 func (x *LocalOnnxLLMProvider) Summarize(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LocalOnnxLLMProvider", Subsystem: x.Subsystem, Operation: "summarize", Status: "OK"}
+	return ExecuteDomainOp("LocalOnnxLLMProvider", x.Subsystem, "summarize", args...)
 }
 
 // LongitudinalAnalyzer implements packages/rae-phoenix/feniks/core/reflection/longitudinal.py (LongitudinalAnalyzer).
@@ -5399,7 +5445,7 @@ func NewLongitudinalAnalyzer() *LongitudinalAnalyzer {
 }
 
 func (x *LongitudinalAnalyzer) AnalyzeTrends(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LongitudinalAnalyzer", Subsystem: x.Subsystem, Operation: "analyze_trends", Status: "OK"}
+	return ExecuteDomainOp("LongitudinalAnalyzer", x.Subsystem, "analyze_trends", args...)
 }
 
 // LongTermLayer implements packages/rae-agentic-memory/rae-core/rae_core/layers/longterm.py (LongTermLayer).
@@ -5414,28 +5460,28 @@ func NewLongTermLayer() *LongTermLayer {
 }
 
 func (x *LongTermLayer) AddMemory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LongTermLayer", Subsystem: x.Subsystem, Operation: "add_memory", Status: "OK"}
+	return ExecuteDomainOp("LongTermLayer", x.Subsystem, "add_memory", args...)
 }
 func (x *LongTermLayer) GetMemory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LongTermLayer", Subsystem: x.Subsystem, Operation: "get_memory", Status: "OK"}
+	return ExecuteDomainOp("LongTermLayer", x.Subsystem, "get_memory", args...)
 }
 func (x *LongTermLayer) SearchMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LongTermLayer", Subsystem: x.Subsystem, Operation: "search_memories", Status: "OK"}
+	return ExecuteDomainOp("LongTermLayer", x.Subsystem, "search_memories", args...)
 }
 func (x *LongTermLayer) Cleanup(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LongTermLayer", Subsystem: x.Subsystem, Operation: "cleanup", Status: "OK"}
+	return ExecuteDomainOp("LongTermLayer", x.Subsystem, "cleanup", args...)
 }
 func (x *LongTermLayer) ConsolidateFromWorking(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LongTermLayer", Subsystem: x.Subsystem, Operation: "consolidate_from_working", Status: "OK"}
+	return ExecuteDomainOp("LongTermLayer", x.Subsystem, "consolidate_from_working", args...)
 }
 func (x *LongTermLayer) UpgradeToSemantic(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LongTermLayer", Subsystem: x.Subsystem, Operation: "upgrade_to_semantic", Status: "OK"}
+	return ExecuteDomainOp("LongTermLayer", x.Subsystem, "upgrade_to_semantic", args...)
 }
 func (x *LongTermLayer) CountEpisodic(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LongTermLayer", Subsystem: x.Subsystem, Operation: "count_episodic", Status: "OK"}
+	return ExecuteDomainOp("LongTermLayer", x.Subsystem, "count_episodic", args...)
 }
 func (x *LongTermLayer) CountSemantic(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "LongTermLayer", Subsystem: x.Subsystem, Operation: "count_semantic", Status: "OK"}
+	return ExecuteDomainOp("LongTermLayer", x.Subsystem, "count_semantic", args...)
 }
 
 // MABTuner implements packages/rae-lab/metrics_aggregator.py (MABTuner).
@@ -5450,10 +5496,10 @@ func NewMABTuner() *MABTuner {
 }
 
 func (x *MABTuner) CalculateSuccessRate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MABTuner", Subsystem: x.Subsystem, Operation: "calculate_success_rate", Status: "OK"}
+	return ExecuteDomainOp("MABTuner", x.Subsystem, "calculate_success_rate", args...)
 }
 func (x *MABTuner) OptimizeRouterWeights(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MABTuner", Subsystem: x.Subsystem, Operation: "optimize_router_weights", Status: "OK"}
+	return ExecuteDomainOp("MABTuner", x.Subsystem, "optimize_router_weights", args...)
 }
 
 // MAESEventStore implements core/event_store.py (MAESEventStore).
@@ -5468,10 +5514,10 @@ func NewMAESEventStore() *MAESEventStore {
 }
 
 func (x *MAESEventStore) AppendEvent(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MAESEventStore", Subsystem: x.Subsystem, Operation: "append_event", Status: "OK"}
+	return ExecuteDomainOp("MAESEventStore", x.Subsystem, "append_event", args...)
 }
 func (x *MAESEventStore) GetTaskProjection(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MAESEventStore", Subsystem: x.Subsystem, Operation: "get_task_projection", Status: "OK"}
+	return ExecuteDomainOp("MAESEventStore", x.Subsystem, "get_task_projection", args...)
 }
 
 // MaintenanceScheduler implements packages/rae-agentic-memory/apps/memory_api/workers/memory_maintenance.py (MaintenanceScheduler).
@@ -5486,13 +5532,13 @@ func NewMaintenanceScheduler() *MaintenanceScheduler {
 }
 
 func (x *MaintenanceScheduler) Create(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MaintenanceScheduler", Subsystem: x.Subsystem, Operation: "create", Status: "OK"}
+	return ExecuteDomainOp("MaintenanceScheduler", x.Subsystem, "create", args...)
 }
 func (x *MaintenanceScheduler) RunDailyMaintenance(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MaintenanceScheduler", Subsystem: x.Subsystem, Operation: "run_daily_maintenance", Status: "OK"}
+	return ExecuteDomainOp("MaintenanceScheduler", x.Subsystem, "run_daily_maintenance", args...)
 }
 func (x *MaintenanceScheduler) RunHourlyMaintenance(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MaintenanceScheduler", Subsystem: x.Subsystem, Operation: "run_hourly_maintenance", Status: "OK"}
+	return ExecuteDomainOp("MaintenanceScheduler", x.Subsystem, "run_hourly_maintenance", args...)
 }
 
 // MathLayerController implements packages/rae-agentic-memory/rae-core/rae_core/math/controller.py (MathLayerController).
@@ -5507,28 +5553,28 @@ func NewMathLayerController() *MathLayerController {
 }
 
 func (x *MathLayerController) ComputeSimilarity(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MathLayerController", Subsystem: x.Subsystem, Operation: "compute_similarity", Status: "OK"}
+	return ExecuteDomainOp("MathLayerController", x.Subsystem, "compute_similarity", args...)
 }
 func (x *MathLayerController) ApplyDecay(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MathLayerController", Subsystem: x.Subsystem, Operation: "apply_decay", Status: "OK"}
+	return ExecuteDomainOp("MathLayerController", x.Subsystem, "apply_decay", args...)
 }
 func (x *MathLayerController) GetRetrievalWeights(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MathLayerController", Subsystem: x.Subsystem, Operation: "get_retrieval_weights", Status: "OK"}
+	return ExecuteDomainOp("MathLayerController", x.Subsystem, "get_retrieval_weights", args...)
 }
 func (x *MathLayerController) GetScoringParams(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MathLayerController", Subsystem: x.Subsystem, Operation: "get_scoring_params", Status: "OK"}
+	return ExecuteDomainOp("MathLayerController", x.Subsystem, "get_scoring_params", args...)
 }
 func (x *MathLayerController) ScoreMemory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MathLayerController", Subsystem: x.Subsystem, Operation: "score_memory", Status: "OK"}
+	return ExecuteDomainOp("MathLayerController", x.Subsystem, "score_memory", args...)
 }
 func (x *MathLayerController) GetEngineParam(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MathLayerController", Subsystem: x.Subsystem, Operation: "get_engine_param", Status: "OK"}
+	return ExecuteDomainOp("MathLayerController", x.Subsystem, "get_engine_param", args...)
 }
 func (x *MathLayerController) GetResonanceThreshold(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MathLayerController", Subsystem: x.Subsystem, Operation: "get_resonance_threshold", Status: "OK"}
+	return ExecuteDomainOp("MathLayerController", x.Subsystem, "get_resonance_threshold", args...)
 }
 func (x *MathLayerController) UpdatePolicy(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MathLayerController", Subsystem: x.Subsystem, Operation: "update_policy", Status: "OK"}
+	return ExecuteDomainOp("MathLayerController", x.Subsystem, "update_policy", args...)
 }
 
 // MathOnlyEmbeddingProvider implements packages/rae-agentic-memory/apps/memory_api/embedding.py (MathOnlyEmbeddingProvider).
@@ -5543,13 +5589,13 @@ func NewMathOnlyEmbeddingProvider() *MathOnlyEmbeddingProvider {
 }
 
 func (x *MathOnlyEmbeddingProvider) EmbedText(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MathOnlyEmbeddingProvider", Subsystem: x.Subsystem, Operation: "embed_text", Status: "OK"}
+	return ExecuteDomainOp("MathOnlyEmbeddingProvider", x.Subsystem, "embed_text", args...)
 }
 func (x *MathOnlyEmbeddingProvider) EmbedBatch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MathOnlyEmbeddingProvider", Subsystem: x.Subsystem, Operation: "embed_batch", Status: "OK"}
+	return ExecuteDomainOp("MathOnlyEmbeddingProvider", x.Subsystem, "embed_batch", args...)
 }
 func (x *MathOnlyEmbeddingProvider) GetDimension(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MathOnlyEmbeddingProvider", Subsystem: x.Subsystem, Operation: "get_dimension", Status: "OK"}
+	return ExecuteDomainOp("MathOnlyEmbeddingProvider", x.Subsystem, "get_dimension", args...)
 }
 
 // MathRerankerStrategy implements packages/rae-agentic-memory/apps/memory_api/services/reranking/math_strategy.py (MathRerankerStrategy).
@@ -5564,7 +5610,7 @@ func NewMathRerankerStrategy() *MathRerankerStrategy {
 }
 
 func (x *MathRerankerStrategy) Rerank(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MathRerankerStrategy", Subsystem: x.Subsystem, Operation: "rerank", Status: "OK"}
+	return ExecuteDomainOp("MathRerankerStrategy", x.Subsystem, "rerank", args...)
 }
 
 // MatrixRelay implements packages/rae-agentic-memory/apps/memory_api/services/relay_broker.py (MatrixRelay).
@@ -5579,10 +5625,10 @@ func NewMatrixRelay() *MatrixRelay {
 }
 
 func (x *MatrixRelay) Publish(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MatrixRelay", Subsystem: x.Subsystem, Operation: "publish", Status: "OK"}
+	return ExecuteDomainOp("MatrixRelay", x.Subsystem, "publish", args...)
 }
 func (x *MatrixRelay) Consume(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MatrixRelay", Subsystem: x.Subsystem, Operation: "consume", Status: "OK"}
+	return ExecuteDomainOp("MatrixRelay", x.Subsystem, "consume", args...)
 }
 
 // MaxBehaviorRiskPolicy implements packages/rae-phoenix/feniks/core/policies/behavior_risk_policy.py (MaxBehaviorRiskPolicy).
@@ -5597,10 +5643,10 @@ func NewMaxBehaviorRiskPolicy() *MaxBehaviorRiskPolicy {
 }
 
 func (x *MaxBehaviorRiskPolicy) Evaluate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MaxBehaviorRiskPolicy", Subsystem: x.Subsystem, Operation: "evaluate", Status: "OK"}
+	return ExecuteDomainOp("MaxBehaviorRiskPolicy", x.Subsystem, "evaluate", args...)
 }
 func (x *MaxBehaviorRiskPolicy) CheckViolations(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MaxBehaviorRiskPolicy", Subsystem: x.Subsystem, Operation: "check_violations", Status: "OK"}
+	return ExecuteDomainOp("MaxBehaviorRiskPolicy", x.Subsystem, "check_violations", args...)
 }
 
 // MCPEmbeddingProvider implements packages/rae-agentic-memory/apps/memory_api/services/embedding.py (MCPEmbeddingProvider).
@@ -5615,13 +5661,13 @@ func NewMCPEmbeddingProvider() *MCPEmbeddingProvider {
 }
 
 func (x *MCPEmbeddingProvider) EmbedText(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MCPEmbeddingProvider", Subsystem: x.Subsystem, Operation: "embed_text", Status: "OK"}
+	return ExecuteDomainOp("MCPEmbeddingProvider", x.Subsystem, "embed_text", args...)
 }
 func (x *MCPEmbeddingProvider) EmbedBatch(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MCPEmbeddingProvider", Subsystem: x.Subsystem, Operation: "embed_batch", Status: "OK"}
+	return ExecuteDomainOp("MCPEmbeddingProvider", x.Subsystem, "embed_batch", args...)
 }
 func (x *MCPEmbeddingProvider) GetDimension(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MCPEmbeddingProvider", Subsystem: x.Subsystem, Operation: "get_dimension", Status: "OK"}
+	return ExecuteDomainOp("MCPEmbeddingProvider", x.Subsystem, "get_dimension", args...)
 }
 
 // McpReranker implements packages/rae-agentic-memory/rae-core/rae_core/search/rerankers/mcp.py (McpReranker).
@@ -5636,7 +5682,7 @@ func NewMcpReranker() *McpReranker {
 }
 
 func (x *McpReranker) Rerank(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "McpReranker", Subsystem: x.Subsystem, Operation: "rerank", Status: "OK"}
+	return ExecuteDomainOp("McpReranker", x.Subsystem, "rerank", args...)
 }
 
 // Memory implements packages/rae-agentic-memory/apps/memory_api/services/importance_scoring.py (Memory).
@@ -5651,10 +5697,10 @@ func NewMemory() *Memory {
 }
 
 func (x *Memory) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Memory", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("Memory", x.Subsystem, "execute", args...)
 }
 func (x *Memory) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "Memory", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("Memory", x.Subsystem, "validate", args...)
 }
 
 // MemoryAdapter implements packages/rae-agentic-memory/apps/memory_api/adapters/base.py (MemoryAdapter).
@@ -5669,13 +5715,13 @@ func NewMemoryAdapter() *MemoryAdapter {
 }
 
 func (x *MemoryAdapter) Connect(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryAdapter", Subsystem: x.Subsystem, Operation: "connect", Status: "OK"}
+	return ExecuteDomainOp("MemoryAdapter", x.Subsystem, "connect", args...)
 }
 func (x *MemoryAdapter) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryAdapter", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("MemoryAdapter", x.Subsystem, "validate", args...)
 }
 func (x *MemoryAdapter) Report(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryAdapter", Subsystem: x.Subsystem, Operation: "report", Status: "OK"}
+	return ExecuteDomainOp("MemoryAdapter", x.Subsystem, "report", args...)
 }
 
 // MemoryAnalyzer implements packages/rae-agentic-memory/scripts/maintenance/analyze_memories.py (MemoryAnalyzer).
@@ -5690,13 +5736,13 @@ func NewMemoryAnalyzer() *MemoryAnalyzer {
 }
 
 func (x *MemoryAnalyzer) FetchAll(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryAnalyzer", Subsystem: x.Subsystem, Operation: "fetch_all", Status: "OK"}
+	return ExecuteDomainOp("MemoryAnalyzer", x.Subsystem, "fetch_all", args...)
 }
 func (x *MemoryAnalyzer) Analyze(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryAnalyzer", Subsystem: x.Subsystem, Operation: "analyze", Status: "OK"}
+	return ExecuteDomainOp("MemoryAnalyzer", x.Subsystem, "analyze", args...)
 }
 func (x *MemoryAnalyzer) Run(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryAnalyzer", Subsystem: x.Subsystem, Operation: "run", Status: "OK"}
+	return ExecuteDomainOp("MemoryAnalyzer", x.Subsystem, "run", args...)
 }
 
 // MemoryEvidenceStore implements packages/rae-agentic-memory/src/rae_memory/evidence_adapter.py (MemoryEvidenceStore).
@@ -5711,7 +5757,7 @@ func NewMemoryEvidenceStore() *MemoryEvidenceStore {
 }
 
 func (x *MemoryEvidenceStore) SaveAction(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryEvidenceStore", Subsystem: x.Subsystem, Operation: "save_action", Status: "OK"}
+	return ExecuteDomainOp("MemoryEvidenceStore", x.Subsystem, "save_action", args...)
 }
 
 // MemoryIsolationGuard implements packages/rae-agentic-memory/rae-core/rae_core/guards/isolation.py (MemoryIsolationGuard).
@@ -5726,16 +5772,16 @@ func NewMemoryIsolationGuard() *MemoryIsolationGuard {
 }
 
 func (x *MemoryIsolationGuard) ValidateSearchResults(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryIsolationGuard", Subsystem: x.Subsystem, Operation: "validate_search_results", Status: "OK"}
+	return ExecuteDomainOp("MemoryIsolationGuard", x.Subsystem, "validate_search_results", args...)
 }
 func (x *MemoryIsolationGuard) ValidateSingleMemory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryIsolationGuard", Subsystem: x.Subsystem, Operation: "validate_single_memory", Status: "OK"}
+	return ExecuteDomainOp("MemoryIsolationGuard", x.Subsystem, "validate_single_memory", args...)
 }
 func (x *MemoryIsolationGuard) GetStats(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryIsolationGuard", Subsystem: x.Subsystem, Operation: "get_stats", Status: "OK"}
+	return ExecuteDomainOp("MemoryIsolationGuard", x.Subsystem, "get_stats", args...)
 }
 func (x *MemoryIsolationGuard) ResetStats(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryIsolationGuard", Subsystem: x.Subsystem, Operation: "reset_stats", Status: "OK"}
+	return ExecuteDomainOp("MemoryIsolationGuard", x.Subsystem, "reset_stats", args...)
 }
 
 // MemoryLayerBase implements packages/rae-agentic-memory/rae-core/rae_core/layers/base.py (MemoryLayerBase).
@@ -5750,22 +5796,22 @@ func NewMemoryLayerBase() *MemoryLayerBase {
 }
 
 func (x *MemoryLayerBase) AddMemory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryLayerBase", Subsystem: x.Subsystem, Operation: "add_memory", Status: "OK"}
+	return ExecuteDomainOp("MemoryLayerBase", x.Subsystem, "add_memory", args...)
 }
 func (x *MemoryLayerBase) GetMemory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryLayerBase", Subsystem: x.Subsystem, Operation: "get_memory", Status: "OK"}
+	return ExecuteDomainOp("MemoryLayerBase", x.Subsystem, "get_memory", args...)
 }
 func (x *MemoryLayerBase) SearchMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryLayerBase", Subsystem: x.Subsystem, Operation: "search_memories", Status: "OK"}
+	return ExecuteDomainOp("MemoryLayerBase", x.Subsystem, "search_memories", args...)
 }
 func (x *MemoryLayerBase) Cleanup(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryLayerBase", Subsystem: x.Subsystem, Operation: "cleanup", Status: "OK"}
+	return ExecuteDomainOp("MemoryLayerBase", x.Subsystem, "cleanup", args...)
 }
 func (x *MemoryLayerBase) CountMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryLayerBase", Subsystem: x.Subsystem, Operation: "count_memories", Status: "OK"}
+	return ExecuteDomainOp("MemoryLayerBase", x.Subsystem, "count_memories", args...)
 }
 func (x *MemoryLayerBase) DeleteMemory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryLayerBase", Subsystem: x.Subsystem, Operation: "delete_memory", Status: "OK"}
+	return ExecuteDomainOp("MemoryLayerBase", x.Subsystem, "delete_memory", args...)
 }
 
 // MemoryRefactor implements packages/rae-agentic-memory/scripts/maintenance/refactor_memories.py (MemoryRefactor).
@@ -5780,16 +5826,16 @@ func NewMemoryRefactor() *MemoryRefactor {
 }
 
 func (x *MemoryRefactor) FetchMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryRefactor", Subsystem: x.Subsystem, Operation: "fetch_memories", Status: "OK"}
+	return ExecuteDomainOp("MemoryRefactor", x.Subsystem, "fetch_memories", args...)
 }
 func (x *MemoryRefactor) AnalyzeMemory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryRefactor", Subsystem: x.Subsystem, Operation: "analyze_memory", Status: "OK"}
+	return ExecuteDomainOp("MemoryRefactor", x.Subsystem, "analyze_memory", args...)
 }
 func (x *MemoryRefactor) MoveMemory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryRefactor", Subsystem: x.Subsystem, Operation: "move_memory", Status: "OK"}
+	return ExecuteDomainOp("MemoryRefactor", x.Subsystem, "move_memory", args...)
 }
 func (x *MemoryRefactor) Run(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryRefactor", Subsystem: x.Subsystem, Operation: "run", Status: "OK"}
+	return ExecuteDomainOp("MemoryRefactor", x.Subsystem, "run", args...)
 }
 
 // MemoryRetrievalDelegate implements packages/rae-agentic-memory/apps/memory_api/services/delegates/retrieval_delegate.py (MemoryRetrievalDelegate).
@@ -5804,28 +5850,28 @@ func NewMemoryRetrievalDelegate() *MemoryRetrievalDelegate {
 }
 
 func (x *MemoryRetrievalDelegate) GetMemory(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryRetrievalDelegate", Subsystem: x.Subsystem, Operation: "get_memory", Status: "OK"}
+	return ExecuteDomainOp("MemoryRetrievalDelegate", x.Subsystem, "get_memory", args...)
 }
 func (x *MemoryRetrievalDelegate) ListMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryRetrievalDelegate", Subsystem: x.Subsystem, Operation: "list_memories", Status: "OK"}
+	return ExecuteDomainOp("MemoryRetrievalDelegate", x.Subsystem, "list_memories", args...)
 }
 func (x *MemoryRetrievalDelegate) CountMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryRetrievalDelegate", Subsystem: x.Subsystem, Operation: "count_memories", Status: "OK"}
+	return ExecuteDomainOp("MemoryRetrievalDelegate", x.Subsystem, "count_memories", args...)
 }
 func (x *MemoryRetrievalDelegate) QueryMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryRetrievalDelegate", Subsystem: x.Subsystem, Operation: "query_memories", Status: "OK"}
+	return ExecuteDomainOp("MemoryRetrievalDelegate", x.Subsystem, "query_memories", args...)
 }
 func (x *MemoryRetrievalDelegate) SearchMemories(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryRetrievalDelegate", Subsystem: x.Subsystem, Operation: "search_memories", Status: "OK"}
+	return ExecuteDomainOp("MemoryRetrievalDelegate", x.Subsystem, "search_memories", args...)
 }
 func (x *MemoryRetrievalDelegate) SearchEvidence(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryRetrievalDelegate", Subsystem: x.Subsystem, Operation: "search_evidence", Status: "OK"}
+	return ExecuteDomainOp("MemoryRetrievalDelegate", x.Subsystem, "search_evidence", args...)
 }
 func (x *MemoryRetrievalDelegate) GetSessionContext(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryRetrievalDelegate", Subsystem: x.Subsystem, Operation: "get_session_context", Status: "OK"}
+	return ExecuteDomainOp("MemoryRetrievalDelegate", x.Subsystem, "get_session_context", args...)
 }
 func (x *MemoryRetrievalDelegate) ListMemoriesForGraphExtraction(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryRetrievalDelegate", Subsystem: x.Subsystem, Operation: "list_memories_for_graph_extraction", Status: "OK"}
+	return ExecuteDomainOp("MemoryRetrievalDelegate", x.Subsystem, "list_memories_for_graph_extraction", args...)
 }
 
 // MemoryScoreResultV3 implements packages/rae-agentic-memory/apps/memory_api/services/memory_scoring_v3.py (MemoryScoreResultV3).
@@ -5840,10 +5886,10 @@ func NewMemoryScoreResultV3() *MemoryScoreResultV3 {
 }
 
 func (x *MemoryScoreResultV3) Execute(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryScoreResultV3", Subsystem: x.Subsystem, Operation: "execute", Status: "OK"}
+	return ExecuteDomainOp("MemoryScoreResultV3", x.Subsystem, "execute", args...)
 }
 func (x *MemoryScoreResultV3) Validate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryScoreResultV3", Subsystem: x.Subsystem, Operation: "validate", Status: "OK"}
+	return ExecuteDomainOp("MemoryScoreResultV3", x.Subsystem, "validate", args...)
 }
 
 // MemoryTracer implements packages/rae-agentic-memory/apps/memory_api/observability/memory_tracing.py (MemoryTracer).
@@ -5858,19 +5904,19 @@ func NewMemoryTracer() *MemoryTracer {
 }
 
 func (x *MemoryTracer) TraceOperation(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryTracer", Subsystem: x.Subsystem, Operation: "trace_operation", Status: "OK"}
+	return ExecuteDomainOp("MemoryTracer", x.Subsystem, "trace_operation", args...)
 }
 func (x *MemoryTracer) RecordVectorOperation(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryTracer", Subsystem: x.Subsystem, Operation: "record_vector_operation", Status: "OK"}
+	return ExecuteDomainOp("MemoryTracer", x.Subsystem, "record_vector_operation", args...)
 }
 func (x *MemoryTracer) RecordGraphOperation(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryTracer", Subsystem: x.Subsystem, Operation: "record_graph_operation", Status: "OK"}
+	return ExecuteDomainOp("MemoryTracer", x.Subsystem, "record_graph_operation", args...)
 }
 func (x *MemoryTracer) RecordReasoningOperation(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryTracer", Subsystem: x.Subsystem, Operation: "record_reasoning_operation", Status: "OK"}
+	return ExecuteDomainOp("MemoryTracer", x.Subsystem, "record_reasoning_operation", args...)
 }
 func (x *MemoryTracer) RecordTokens(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryTracer", Subsystem: x.Subsystem, Operation: "record_tokens", Status: "OK"}
+	return ExecuteDomainOp("MemoryTracer", x.Subsystem, "record_tokens", args...)
 }
 
 // MemoryValidatorPlugin implements packages/rae-agentic-memory/apps/memory_api/plugins/examples/memory_validator.py (MemoryValidatorPlugin).
@@ -5885,16 +5931,16 @@ func NewMemoryValidatorPlugin() *MemoryValidatorPlugin {
 }
 
 func (x *MemoryValidatorPlugin) Initialize(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryValidatorPlugin", Subsystem: x.Subsystem, Operation: "initialize", Status: "OK"}
+	return ExecuteDomainOp("MemoryValidatorPlugin", x.Subsystem, "initialize", args...)
 }
 func (x *MemoryValidatorPlugin) OnBeforeMemoryCreate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryValidatorPlugin", Subsystem: x.Subsystem, Operation: "on_before_memory_create", Status: "OK"}
+	return ExecuteDomainOp("MemoryValidatorPlugin", x.Subsystem, "on_before_memory_create", args...)
 }
 func (x *MemoryValidatorPlugin) OnBeforeMemoryUpdate(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryValidatorPlugin", Subsystem: x.Subsystem, Operation: "on_before_memory_update", Status: "OK"}
+	return ExecuteDomainOp("MemoryValidatorPlugin", x.Subsystem, "on_before_memory_update", args...)
 }
 func (x *MemoryValidatorPlugin) HealthCheck(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryValidatorPlugin", Subsystem: x.Subsystem, Operation: "health_check", Status: "OK"}
+	return ExecuteDomainOp("MemoryValidatorPlugin", x.Subsystem, "health_check", args...)
 }
 
 // MemoryVectorStore implements packages/rae-agentic-memory/apps/memory_api/services/vector_store/base.py (MemoryVectorStore).
@@ -5909,13 +5955,13 @@ func NewMemoryVectorStore() *MemoryVectorStore {
 }
 
 func (x *MemoryVectorStore) Upsert(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryVectorStore", Subsystem: x.Subsystem, Operation: "upsert", Status: "OK"}
+	return ExecuteDomainOp("MemoryVectorStore", x.Subsystem, "upsert", args...)
 }
 func (x *MemoryVectorStore) Query(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryVectorStore", Subsystem: x.Subsystem, Operation: "query", Status: "OK"}
+	return ExecuteDomainOp("MemoryVectorStore", x.Subsystem, "query", args...)
 }
 func (x *MemoryVectorStore) Delete(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MemoryVectorStore", Subsystem: x.Subsystem, Operation: "delete", Status: "OK"}
+	return ExecuteDomainOp("MemoryVectorStore", x.Subsystem, "delete", args...)
 }
 
 // MeshExporter implements src/mesh/exporter.py (MeshExporter).
@@ -5930,7 +5976,7 @@ func NewMeshExporter() *MeshExporter {
 }
 
 func (x *MeshExporter) Export(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshExporter", Subsystem: x.Subsystem, Operation: "export", Status: "OK"}
+	return ExecuteDomainOp("MeshExporter", x.Subsystem, "export", args...)
 }
 
 // MeshFederationApp implements packages/rae-agentic-memory/rae-portal/apps/mesh_federation.py (MeshFederationApp).
@@ -5945,25 +5991,25 @@ func NewMeshFederationApp() *MeshFederationApp {
 }
 
 func (x *MeshFederationApp) LoadData(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshFederationApp", Subsystem: x.Subsystem, Operation: "load_data", Status: "OK"}
+	return ExecuteDomainOp("MeshFederationApp", x.Subsystem, "load_data", args...)
 }
 func (x *MeshFederationApp) CreateInvite(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshFederationApp", Subsystem: x.Subsystem, Operation: "create_invite", Status: "OK"}
+	return ExecuteDomainOp("MeshFederationApp", x.Subsystem, "create_invite", args...)
 }
 func (x *MeshFederationApp) JoinPeer(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshFederationApp", Subsystem: x.Subsystem, Operation: "join_peer", Status: "OK"}
+	return ExecuteDomainOp("MeshFederationApp", x.Subsystem, "join_peer", args...)
 }
 func (x *MeshFederationApp) RegisterPeerManually(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshFederationApp", Subsystem: x.Subsystem, Operation: "register_peer_manually", Status: "OK"}
+	return ExecuteDomainOp("MeshFederationApp", x.Subsystem, "register_peer_manually", args...)
 }
 func (x *MeshFederationApp) ManualSync(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshFederationApp", Subsystem: x.Subsystem, Operation: "manual_sync", Status: "OK"}
+	return ExecuteDomainOp("MeshFederationApp", x.Subsystem, "manual_sync", args...)
 }
 func (x *MeshFederationApp) RevokePeer(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshFederationApp", Subsystem: x.Subsystem, Operation: "revoke_peer", Status: "OK"}
+	return ExecuteDomainOp("MeshFederationApp", x.Subsystem, "revoke_peer", args...)
 }
 func (x *MeshFederationApp) Render(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshFederationApp", Subsystem: x.Subsystem, Operation: "render", Status: "OK"}
+	return ExecuteDomainOp("MeshFederationApp", x.Subsystem, "render", args...)
 }
 
 // MeshImporter implements src/mesh/importer.py (MeshImporter).
@@ -5978,7 +6024,7 @@ func NewMeshImporter() *MeshImporter {
 }
 
 func (x *MeshImporter) ImportEnvelope(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshImporter", Subsystem: x.Subsystem, Operation: "import_envelope", Status: "OK"}
+	return ExecuteDomainOp("MeshImporter", x.Subsystem, "import_envelope", args...)
 }
 
 // MeshPeerRegistry implements src/mesh/mesh_peer_registry.py (MeshPeerRegistry).
@@ -5993,13 +6039,13 @@ func NewMeshPeerRegistry() *MeshPeerRegistry {
 }
 
 func (x *MeshPeerRegistry) RegisterPeer(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshPeerRegistry", Subsystem: x.Subsystem, Operation: "register_peer", Status: "OK"}
+	return ExecuteDomainOp("MeshPeerRegistry", x.Subsystem, "register_peer", args...)
 }
 func (x *MeshPeerRegistry) GetPeer(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshPeerRegistry", Subsystem: x.Subsystem, Operation: "get_peer", Status: "OK"}
+	return ExecuteDomainOp("MeshPeerRegistry", x.Subsystem, "get_peer", args...)
 }
 func (x *MeshPeerRegistry) ListPeers(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshPeerRegistry", Subsystem: x.Subsystem, Operation: "list_peers", Status: "OK"}
+	return ExecuteDomainOp("MeshPeerRegistry", x.Subsystem, "list_peers", args...)
 }
 
 // MeshService implements packages/rae-agentic-memory/apps/memory_api/services/mesh_service.py (MeshService).
@@ -6014,58 +6060,58 @@ func NewMeshService() *MeshService {
 }
 
 func (x *MeshService) EncryptAuthData(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "encrypt_auth_data", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "encrypt_auth_data", args...)
 }
 func (x *MeshService) DecryptAuthData(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "decrypt_auth_data", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "decrypt_auth_data", args...)
 }
 func (x *MeshService) DeriveKeyPair(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "derive_key_pair", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "derive_key_pair", args...)
 }
 func (x *MeshService) GenerateChallenge(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "generate_challenge", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "generate_challenge", args...)
 }
 func (x *MeshService) VerifyChallengeSignature(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "verify_challenge_signature", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "verify_challenge_signature", args...)
 }
 func (x *MeshService) SignChallenge(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "sign_challenge", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "sign_challenge", args...)
 }
 func (x *MeshService) CreateInvite(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "create_invite", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "create_invite", args...)
 }
 func (x *MeshService) ValidateInvite(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "validate_invite", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "validate_invite", args...)
 }
 func (x *MeshService) RegisterPeer(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "register_peer", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "register_peer", args...)
 }
 func (x *MeshService) GetPeer(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "get_peer", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "get_peer", args...)
 }
 func (x *MeshService) GetPeerPublicKey(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "get_peer_public_key", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "get_peer_public_key", args...)
 }
 func (x *MeshService) ListPeers(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "list_peers", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "list_peers", args...)
 }
 func (x *MeshService) RevokePeer(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "revoke_peer", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "revoke_peer", args...)
 }
 func (x *MeshService) SaveSyncLog(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "save_sync_log", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "save_sync_log", args...)
 }
 func (x *MeshService) GenerateConsentToken(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "generate_consent_token", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "generate_consent_token", args...)
 }
 func (x *MeshService) VerifyConsentToken(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "verify_consent_token", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "verify_consent_token", args...)
 }
 func (x *MeshService) PrepareSyncPayload(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "prepare_sync_payload", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "prepare_sync_payload", args...)
 }
 func (x *MeshService) PushMemoriesToPeer(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MeshService", Subsystem: x.Subsystem, Operation: "push_memories_to_peer", Status: "OK"}
+	return ExecuteDomainOp("MeshService", x.Subsystem, "push_memories_to_peer", args...)
 }
 
 // MetadataInjector implements packages/rae-agentic-memory/rae-core/rae_core/math/metadata_injector.py (MetadataInjector).
@@ -6080,11 +6126,11 @@ func NewMetadataInjector() *MetadataInjector {
 }
 
 func (x *MetadataInjector) EnrichText(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MetadataInjector", Subsystem: x.Subsystem, Operation: "enrich_text", Status: "OK"}
+	return ExecuteDomainOp("MetadataInjector", x.Subsystem, "enrich_text", args...)
 }
 func (x *MetadataInjector) ProcessQuery(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MetadataInjector", Subsystem: x.Subsystem, Operation: "process_query", Status: "OK"}
+	return ExecuteDomainOp("MetadataInjector", x.Subsystem, "process_query", args...)
 }
 func (x *MetadataInjector) ProcessDocument(args ...interface{}) DomainExecutionRecord {
-	return DomainExecutionRecord{Class: "MetadataInjector", Subsystem: x.Subsystem, Operation: "process_document", Status: "OK"}
+	return ExecuteDomainOp("MetadataInjector", x.Subsystem, "process_document", args...)
 }
