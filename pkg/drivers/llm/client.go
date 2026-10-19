@@ -257,6 +257,18 @@ type QwenProvider struct {
 }
 
 func NewQwenProvider() *QwenProvider { return &QwenProvider{LLMRouter: NewLLMRouter()} }
+func (q *QwenProvider) Complete(ctx context.Context, model, prompt string) (string, error) {
+	return q.LLMRouter.Complete(ctx, model, prompt)
+}
+func (q *QwenProvider) Stream(ctx context.Context, model, prompt string) ([]string, error) {
+	return q.LLMRouter.Stream(ctx, model, prompt)
+}
+func (q *QwenProvider) Embed(ctx context.Context, text string, dim int) []float32 {
+	return q.LLMRouter.Embed(ctx, text, dim)
+}
+func (q *QwenProvider) EmbedBatch(ctx context.Context, texts []string, dim int) [][]float32 {
+	return q.LLMRouter.EmbedBatch(ctx, texts, dim)
+}
 
 // GeminiProvider implements apps/llm/providers/gemini_provider.py & orchestrator/providers/gemini.py.
 type GeminiProvider struct {
@@ -277,9 +289,43 @@ type AnthropicProvider struct {
 	*LLMRouter
 }
 
-// OllamaProvider implements apps/llm/providers/ollama_provider.py.
+func NewAnthropicProvider() *AnthropicProvider { return &AnthropicProvider{LLMRouter: NewLLMRouter()} }
+func (a *AnthropicProvider) Complete(ctx context.Context, model, prompt string) (string, error) {
+	return a.LLMRouter.Complete(ctx, model, prompt)
+}
+func (a *AnthropicProvider) Stream(ctx context.Context, model, prompt string) ([]string, error) {
+	return a.LLMRouter.Stream(ctx, model, prompt)
+}
+func (a *AnthropicProvider) Embed(ctx context.Context, text string, dim int) []float32 {
+	return a.LLMRouter.Embed(ctx, text, dim)
+}
+func (a *AnthropicProvider) EmbedBatch(ctx context.Context, texts []string, dim int) [][]float32 {
+	return a.LLMRouter.EmbedBatch(ctx, texts, dim)
+}
+
+// OllamaProvider implements apps/llm/providers/ollama_provider.py & orchestrator/providers/ollama.py.
 type OllamaProvider struct {
 	*LLMRouter
+}
+
+func NewOllamaProvider() *OllamaProvider { return &OllamaProvider{LLMRouter: NewLLMRouter()} }
+func (o *OllamaProvider) Name() string              { return "ollama" }
+func (o *OllamaProvider) AvailableModels() []string { return []string{"deepseek-r1:8b", "qwen3.5:9b"} }
+func (o *OllamaProvider) IsAvailable() bool         { return true }
+func (o *OllamaProvider) Generate(ctx context.Context, prompt string) (string, error) {
+	return o.LLMRouter.Complete(ctx, "deepseek-r1:8b", prompt)
+}
+func (o *OllamaProvider) Complete(ctx context.Context, model, prompt string) (string, error) {
+	return o.LLMRouter.Complete(ctx, model, prompt)
+}
+func (o *OllamaProvider) Stream(ctx context.Context, model, prompt string) ([]string, error) {
+	return o.LLMRouter.Stream(ctx, model, prompt)
+}
+func (o *OllamaProvider) Embed(ctx context.Context, text string, dim int) []float32 {
+	return o.LLMRouter.Embed(ctx, text, dim)
+}
+func (o *OllamaProvider) EmbedBatch(ctx context.Context, texts []string, dim int) [][]float32 {
+	return o.LLMRouter.EmbedBatch(ctx, texts, dim)
 }
 
 // DeepSeekProvider implements apps/llm/providers/deepseek_provider.py.
@@ -287,7 +333,35 @@ type DeepSeekProvider struct {
 	*LLMRouter
 }
 
+func NewDeepSeekProvider() *DeepSeekProvider { return &DeepSeekProvider{LLMRouter: NewLLMRouter()} }
+func (d *DeepSeekProvider) Complete(ctx context.Context, model, prompt string) (string, error) {
+	return d.LLMRouter.Complete(ctx, model, prompt)
+}
+func (d *DeepSeekProvider) Stream(ctx context.Context, model, prompt string) ([]string, error) {
+	return d.LLMRouter.Stream(ctx, model, prompt)
+}
+func (d *DeepSeekProvider) Embed(ctx context.Context, text string, dim int) []float32 {
+	return d.LLMRouter.Embed(ctx, text, dim)
+}
+func (d *DeepSeekProvider) EmbedBatch(ctx context.Context, texts []string, dim int) [][]float32 {
+	return d.LLMRouter.EmbedBatch(ctx, texts, dim)
+}
+
 // OpenAIProvider implements apps/llm/providers/openai_provider.py.
 type OpenAIProvider struct {
 	*LLMRouter
+}
+
+func NewOpenAIProvider() *OpenAIProvider { return &OpenAIProvider{LLMRouter: NewLLMRouter()} }
+func (o *OpenAIProvider) Complete(ctx context.Context, model, prompt string) (string, error) {
+	return o.LLMRouter.Complete(ctx, model, prompt)
+}
+func (o *OpenAIProvider) Stream(ctx context.Context, model, prompt string) ([]string, error) {
+	return o.LLMRouter.Stream(ctx, model, prompt)
+}
+func (o *OpenAIProvider) Embed(ctx context.Context, text string, dim int) []float32 {
+	return o.LLMRouter.Embed(ctx, text, dim)
+}
+func (o *OpenAIProvider) EmbedBatch(ctx context.Context, texts []string, dim int) [][]float32 {
+	return o.LLMRouter.EmbedBatch(ctx, texts, dim)
 }

@@ -668,6 +668,54 @@ func (s *Service) CallTool(ctx context.Context, name string, args map[string]int
 	}
 }
 
+// ListPrompts returns MCP prompt templates exposed by the server.
+func (s *Service) ListPrompts() []map[string]interface{} {
+	return []map[string]interface{}{
+		{
+			"name":        "rae-context-injection",
+			"description": "Inject multi-layer RAE memory context and ISO 42001 rules into agent prompt",
+		},
+		{
+			"name":        "rae-phoenix-migration",
+			"description": "Guided 6D behavioral parity refactoring prompt for AngularJS/PHP to React/Go",
+		},
+	}
+}
+
+// GetPrompt renders an MCP prompt template by name.
+func (s *Service) GetPrompt(name string, args map[string]interface{}) map[string]interface{} {
+	return map[string]interface{}{
+		"description": "Rendered RAE MCP prompt: " + name,
+		"messages": []map[string]interface{}{
+			{
+				"role":    "user",
+				"content": map[string]interface{}{"type": "text", "text": fmt.Sprintf("[RAE Prompt: %s] args=%v", name, args)},
+			},
+		},
+	}
+}
+
+// ListResources returns MCP resources exposed by the server.
+func (s *Service) ListResources() []map[string]interface{} {
+	return []map[string]interface{}{
+		{"uri": "rae://memory/stats", "name": "RAE Memory Layer Statistics", "mimeType": "application/json"},
+		{"uri": "rae://governance/policies", "name": "ISO 42001 & 27001 Governance Policies", "mimeType": "application/json"},
+		{"uri": "rae://cluster/nodes", "name": "RAE Compute Cluster Nodes (Lumina/Julka/Piotrek)", "mimeType": "application/json"},
+	}
+}
+
+// ReadResource reads the content of an MCP resource URI.
+func (s *Service) ReadResource(ctx context.Context, uri string) map[string]interface{} {
+	switch uri {
+	case "rae://memory/stats":
+		st, _ := s.memory.GetMemoryStats(ctx, "")
+		b, _ := json.Marshal(st)
+		return map[string]interface{}{"uri": uri, "mimeType": "application/json", "text": string(b)}
+	default:
+		return map[string]interface{}{"uri": uri, "mimeType": "application/json", "text": `{"status":"active"}`}
+	}
+}
+
 // ServeStdio handles JSON-RPC 2.0 MCP messages over stdin/stdout.
 func (s *Service) ServeStdio(ctx context.Context, in io.Reader, out io.Writer) error {
 	scanner := bufio.NewScanner(in)
@@ -688,6 +736,33 @@ func (s *Service) ServeStdio(ctx context.Context, in io.Reader, out io.Writer) e
 				"jsonrpc": "2.0",
 				"id":      req.ID,
 				"result":  map[string]interface{}{"tools": s.ListTools()},
+			})
+		case "prompts/list":
+			_ = enc.Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      req.ID,
+				"result":  map[string]interface{}{"prompts": s.ListPrompts()},
+			})
+		case "prompts/get":
+			pName, _ := req.Params["name"].(string)
+			pArgs, _ := req.Params["arguments"].(map[string]interface{})
+			_ = enc.Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      req.ID,
+				"result":  s.GetPrompt(pName, pArgs),
+			})
+		case "resources/list":
+			_ = enc.Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      req.ID,
+				"result":  map[string]interface{}{"resources": s.ListResources()},
+			})
+		case "resources/read":
+			uri, _ := req.Params["uri"].(string)
+			_ = enc.Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      req.ID,
+				"result":  map[string]interface{}{"contents": []interface{}{s.ReadResource(ctx, uri)}},
 			})
 		case "tools/call":
 			tName, _ := req.Params["name"].(string)
@@ -727,6 +802,16 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"tools": s.ListTools()})
 	})
 
+	mux.HandleFunc("/v2/mcp/prompts", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"prompts": s.ListPrompts()})
+	})
+
+	mux.HandleFunc("/v2/mcp/resources", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"resources": s.ListResources()})
+	})
+
 	mux.HandleFunc("/v2/mcp/call", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Name      string                 `json:"name"`
@@ -763,3 +848,4 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 		_, _ = w.Write([]byte(out.String()))
 	})
 }
+

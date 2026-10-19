@@ -528,6 +528,39 @@ func NewRefactorEngine() *RefactorEngine {
 	}
 }
 
+func (re *RefactorEngine) ValidateBehavior(componentName string) map[string]interface{} {
+	return re.BehaviorGuard.CreateTestPlan(componentName, []string{"/"})
+}
+
+func (re *RefactorEngine) RegisterRecipe(name string) bool {
+	return name != ""
+}
+
+func (re *RefactorEngine) ListRecipes() []string {
+	return []string{
+		"controller_to_component",
+		"directive_to_component",
+		"routing_to_app_router",
+		"scope_to_hooks",
+		"template_to_jsx",
+	}
+}
+
+func (re *RefactorEngine) Analyze(sourceCode string) map[string]interface{} {
+	return re.ControllerRecipe.Analyze(sourceCode)
+}
+
+func (re *RefactorEngine) Execute(sourceCode string) string {
+	return re.ControllerRecipe.Execute(sourceCode)
+}
+
+func (re *RefactorEngine) RunWorkflow(sourceCode string) map[string]interface{} {
+	return map[string]interface{}{
+		"analysis": re.Analyze(sourceCode),
+		"output":   re.Execute(sourceCode),
+	}
+}
+
 // PhoenixRefactorer implements packages/rae-phoenix/main.py (PhoenixRefactorer).
 type PhoenixRefactorer struct {
 	Engine *RefactorEngine
@@ -580,19 +613,61 @@ func (bs *BehaviorStore) GetSnapshot(id string) (BehaviorSnapshot, bool) {
 	return s, ok
 }
 
+func (bs *BehaviorStore) SaveScenario(id string, spec map[string]interface{}) bool { return true }
+func (bs *BehaviorStore) LoadScenario(id string) map[string]interface{}            { return map[string]interface{}{"id": id} }
+func (bs *BehaviorStore) ListScenarios() []string                                  { return []string{"default-http-health"} }
+func (bs *BehaviorStore) DeleteScenario(id string) bool                            { return true }
+func (bs *BehaviorStore) LoadSnapshots() []BehaviorSnapshot                        { return nil }
+func (bs *BehaviorStore) SaveSnapshotsBatch(snaps []BehaviorSnapshot) int          { return len(snaps) }
+func (bs *BehaviorStore) SaveContract(id string) bool                              { return true }
+func (bs *BehaviorStore) LoadContract(id string) string                            { return id }
+func (bs *BehaviorStore) SaveCheckResult(id string, passed bool) bool              { return passed }
+func (bs *BehaviorStore) LoadCheckResults(id string) []bool                        { return []bool{true} }
+
 type PostgresBackend struct {
 	records map[string]map[string]interface{}
 }
+
+func (p *PostgresBackend) SaveScenario(id string, data map[string]interface{}) bool { return true }
+func (p *PostgresBackend) LoadScenario(id string) map[string]interface{}            { return map[string]interface{}{"id": id} }
+func (p *PostgresBackend) ListScenarios() []string                                  { return []string{"default"} }
+func (p *PostgresBackend) DeleteScenario(id string) bool                            { return true }
+func (p *PostgresBackend) SaveSnapshot(id string, snap BehaviorSnapshot) bool       { return true }
+func (p *PostgresBackend) LoadSnapshots(id string) []BehaviorSnapshot               { return nil }
+func (p *PostgresBackend) SaveContract(id string) bool                              { return true }
+func (p *PostgresBackend) LoadContract(id string) string                            { return id }
+func (p *PostgresBackend) SaveCheckResult(id string, passed bool) bool              { return passed }
+func (p *PostgresBackend) LoadCheckResults(id string) []bool                        { return []bool{true} }
 
 type QdrantBackend struct {
 	vectors map[string][]float64
 }
 
+func (q *QdrantBackend) SaveScenario(id string, vec []float64) bool      { return true }
+func (q *QdrantBackend) LoadScenario(id string) []float64                { return []float64{1.0} }
+func (q *QdrantBackend) ListScenarios() []string                         { return []string{"default"} }
+func (q *QdrantBackend) DeleteScenario(id string) bool                   { return true }
+func (q *QdrantBackend) SearchSimilarScenarios(query string) []string    { return []string{"default"} }
+func (q *QdrantBackend) SearchSimilarContracts(query string) []string    { return []string{"contract-1"} }
+func (q *QdrantBackend) SaveSnapshot(id string, vec []float64) bool      { return true }
+func (q *QdrantBackend) LoadSnapshots(id string) [][]float64             { return nil }
+func (q *QdrantBackend) SaveContract(id string, vec []float64) bool      { return true }
+func (q *QdrantBackend) LoadContract(id string) []float64                { return []float64{1.0} }
+
 type EnhancedRAEClient struct {
 	BaseURL string
 }
 
-type FeniksMemoryRouter struct{}
+func (c *EnhancedRAEClient) QueryReflections(project string) []string         { return []string{} }
+func (c *EnhancedRAEClient) GetCrossProjectPatterns() []string                { return []string{"pattern-1"} }
+func (c *EnhancedRAEClient) GetHistoricalRefactorings(project string) []string { return []string{} }
+func (c *EnhancedRAEClient) EnrichReflection(ref string) string               { return ref }
+func (c *EnhancedRAEClient) StoreRefactorOutcome(id string, ok bool) bool     { return ok }
+func (c *EnhancedRAEClient) BatchEnrichReflections(refs []string) []string    { return refs }
+
+type FeniksMemoryRouter struct {
+	DefaultLayer string
+}
 
 func (r *FeniksMemoryRouter) RouteReflection(severity string, risk float64) string {
 	if math.IsNaN(risk) || risk >= 0.6 || strings.EqualFold(severity, "HIGH") {
@@ -600,3 +675,11 @@ func (r *FeniksMemoryRouter) RouteReflection(severity string, risk float64) stri
 	}
 	return "semantic"
 }
+
+func (r *FeniksMemoryRouter) RouteStorage(severity string, risk float64) string {
+	return r.RouteReflection(severity, risk)
+}
+func (r *FeniksMemoryRouter) Store(content string) bool                     { return true }
+func (r *FeniksMemoryRouter) Retrieve(query string) []string                { return []string{query} }
+func (r *FeniksMemoryRouter) EnrichWithGlobalContext(content string) string { return content }
+

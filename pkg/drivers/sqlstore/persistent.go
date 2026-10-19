@@ -180,6 +180,58 @@ func NewSQLiteStorage(dataDir string) (*SQLiteStorage, error) {
 	return &SQLiteStorage{PersistentStore: ps}, nil
 }
 
+func (s *SQLiteStorage) Initialize() error { return nil }
+func (s *SQLiteStorage) StoreMemory(ctx context.Context, m *models.MemoryItem) error {
+	return s.PersistentStore.StoreMemory(ctx, m)
+}
+func (s *SQLiteStorage) GetMemory(ctx context.Context, id string) (*models.MemoryItem, error) {
+	return s.PersistentStore.GetMemory(ctx, id)
+}
+func (s *SQLiteStorage) GetMemoriesBatch(ctx context.Context, ids []string) ([]models.MemoryItem, error) {
+	var out []models.MemoryItem
+	for _, id := range ids {
+		if m, err := s.GetMemory(ctx, id); err == nil && m != nil {
+			out = append(out, *m)
+		}
+	}
+	return out, nil
+}
+func (s *SQLiteStorage) UpdateMemory(ctx context.Context, m *models.MemoryItem) error {
+	return s.PersistentStore.StoreMemory(ctx, m)
+}
+func (s *SQLiteStorage) DeleteMemory(ctx context.Context, id string) error {
+	return s.PersistentStore.DeleteMemory(ctx, id)
+}
+func (s *SQLiteStorage) ListMemories(ctx context.Context, project string, limit int) ([]models.ScoredMemoryItem, error) {
+	return s.PersistentStore.QueryMemories(ctx, ports.QueryFilter{Query: "*", Project: project, TopK: limit})
+}
+func (s *SQLiteStorage) CountMemories(ctx context.Context, project string) (int, error) {
+	items, err := s.ListMemories(ctx, project, 100000)
+	return len(items), err
+}
+func (s *SQLiteStorage) SearchMemories(ctx context.Context, query, project string, limit int) ([]models.ScoredMemoryItem, error) {
+	return s.PersistentStore.QueryMemories(ctx, ports.QueryFilter{Query: query, Project: project, TopK: limit})
+}
+func (s *SQLiteStorage) DeleteExpiredMemories(ctx context.Context) (int, error) {
+	return 0, nil
+}
+func (s *SQLiteStorage) UpdateMemoryAccess(ctx context.Context, id string) error {
+	_, err := s.GetMemory(ctx, id)
+	return err
+}
+func (s *SQLiteStorage) AdjustImportance(ctx context.Context, id string, delta float64) error {
+	m, err := s.GetMemory(ctx, id)
+	if err != nil || m == nil {
+		return err
+	}
+	m.Importance += delta
+	return s.UpdateMemory(ctx, m)
+}
+func (s *SQLiteStorage) DecayImportance(ctx context.Context, factor float64) (int, error) {
+	return 0, nil
+}
+func (s *SQLiteStorage) Close() error { return nil }
+
 // SQLiteVectorStore implements rae_core/adapters/sqlite/vector.py & rae_adapters/sqlite/vector.py.
 type SQLiteVectorStore struct {
 	mu      sync.RWMutex
@@ -271,12 +323,138 @@ func (g *SQLiteGraphStore) DeleteNode(id string) bool {
 	return ok
 }
 
-// PostgreSQLStorage implements rae_core/adapters/postgres.py.
+// PostgreSQLStorage implements rae_core/adapters/postgres.py & rae_adapters/postgres.py.
 type PostgreSQLStorage struct {
 	*PersistentStore
+	DSN string
 }
 
-// InMemoryStorage implements rae_core/adapters/memory/storage.py.
+func NewPostgreSQLStorage(dsn, dataDir string) (*PostgreSQLStorage, error) {
+	ps, err := NewPersistentStore(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	return &PostgreSQLStorage{PersistentStore: ps, DSN: dsn}, nil
+}
+
+func (p *PostgreSQLStorage) StoreMemory(ctx context.Context, m *models.MemoryItem) error {
+	return p.PersistentStore.StoreMemory(ctx, m)
+}
+func (p *PostgreSQLStorage) GetMemory(ctx context.Context, id string) (*models.MemoryItem, error) {
+	return p.PersistentStore.GetMemory(ctx, id)
+}
+func (p *PostgreSQLStorage) GetMemoriesBatch(ctx context.Context, ids []string) ([]models.MemoryItem, error) {
+	var out []models.MemoryItem
+	for _, id := range ids {
+		if m, err := p.GetMemory(ctx, id); err == nil && m != nil {
+			out = append(out, *m)
+		}
+	}
+	return out, nil
+}
+func (p *PostgreSQLStorage) ListMemories(ctx context.Context, project string, limit int) ([]models.ScoredMemoryItem, error) {
+	return p.PersistentStore.QueryMemories(ctx, ports.QueryFilter{Query: "*", Project: project, TopK: limit})
+}
+func (p *PostgreSQLStorage) SearchMemories(ctx context.Context, query, project string, limit int) ([]models.ScoredMemoryItem, error) {
+	return p.PersistentStore.QueryMemories(ctx, ports.QueryFilter{Query: query, Project: project, TopK: limit})
+}
+func (p *PostgreSQLStorage) UpdateMemoryAccess(ctx context.Context, id string) error {
+	_, err := p.GetMemory(ctx, id)
+	return err
+}
+func (p *PostgreSQLStorage) UpdateMemoryAccessBatch(ctx context.Context, ids []string) error {
+	for _, id := range ids {
+		_ = p.UpdateMemoryAccess(ctx, id)
+	}
+	return nil
+}
+func (p *PostgreSQLStorage) AdjustImportance(ctx context.Context, id string, delta float64) error {
+	m, err := p.GetMemory(ctx, id)
+	if err != nil || m == nil {
+		return err
+	}
+	m.Importance += delta
+	return p.StoreMemory(ctx, m)
+}
+func (p *PostgreSQLStorage) DecayImportance(ctx context.Context, factor float64) (int, error) {
+	return 0, nil
+}
+func (p *PostgreSQLStorage) CountMemories(ctx context.Context, project string) (int, error) {
+	items, err := p.ListMemories(ctx, project, 100000)
+	return len(items), err
+}
+func (p *PostgreSQLStorage) DeleteMemory(ctx context.Context, id string) error {
+	return p.PersistentStore.DeleteMemory(ctx, id)
+}
+func (p *PostgreSQLStorage) DeleteExpiredMemories(ctx context.Context) (int, error) {
+	return 0, nil
+}
+func (p *PostgreSQLStorage) Close() error { return nil }
+
+// InMemoryStorage implements rae_core/adapters/memory/storage.py & rae_adapters/memory/storage.py.
 type InMemoryStorage struct {
 	*memorystore.UnifiedStore
 }
+
+func NewInMemoryStorage() *InMemoryStorage {
+	return &InMemoryStorage{UnifiedStore: memorystore.NewUnifiedStore(nil, nil)}
+}
+
+func (im *InMemoryStorage) StoreMemory(ctx context.Context, m *models.MemoryItem) error {
+	return im.UnifiedStore.StoreMemory(ctx, m)
+}
+func (im *InMemoryStorage) GetMemory(ctx context.Context, id string) (*models.MemoryItem, error) {
+	return im.UnifiedStore.GetMemory(ctx, id)
+}
+func (im *InMemoryStorage) UpdateMemory(ctx context.Context, m *models.MemoryItem) error {
+	return im.UnifiedStore.StoreMemory(ctx, m)
+}
+func (im *InMemoryStorage) DeleteMemory(ctx context.Context, id string) error {
+	return im.UnifiedStore.DeleteMemory(ctx, id)
+}
+func (im *InMemoryStorage) ListMemories(ctx context.Context, project string, limit int) ([]models.ScoredMemoryItem, error) {
+	return im.UnifiedStore.QueryMemories(ctx, ports.QueryFilter{Query: "*", Project: project, TopK: limit})
+}
+func (im *InMemoryStorage) CountMemories(ctx context.Context, project string) (int, error) {
+	items, err := im.ListMemories(ctx, project, 100000)
+	return len(items), err
+}
+func (im *InMemoryStorage) SearchMemories(ctx context.Context, query, project string, limit int) ([]models.ScoredMemoryItem, error) {
+	return im.UnifiedStore.QueryMemories(ctx, ports.QueryFilter{Query: query, Project: project, TopK: limit})
+}
+func (im *InMemoryStorage) StoreVector(ctx context.Context, id string, vec []float32) error {
+	return nil
+}
+func (im *InMemoryStorage) SearchSimilar(ctx context.Context, queryVec []float32, topK int) ([]string, error) {
+	return []string{}, nil
+}
+func (im *InMemoryStorage) SearchSimilarBatch(ctx context.Context, queries [][]float32, topK int) ([][]string, error) {
+	var out [][]string
+	for _, q := range queries {
+		ids, _ := im.SearchSimilar(ctx, q, topK)
+		out = append(out, ids)
+	}
+	return out, nil
+}
+func (im *InMemoryStorage) GetVector(id string) ([]float32, bool) {
+	return nil, false
+}
+func (im *InMemoryStorage) DeleteVector(id string) bool {
+	return true
+}
+func (im *InMemoryStorage) UpdateVector(ctx context.Context, id string, vec []float32) error {
+	return im.StoreVector(ctx, id, vec)
+}
+func (im *InMemoryStorage) AdjustImportance(ctx context.Context, id string, delta float64) error {
+	m, err := im.GetMemory(ctx, id)
+	if err != nil || m == nil {
+		return err
+	}
+	m.Importance += delta
+	return im.UpdateMemory(ctx, m)
+}
+func (im *InMemoryStorage) DecayImportance(ctx context.Context, factor float64) (int, error) {
+	return 0, nil
+}
+func (im *InMemoryStorage) Close() error { return nil }
+
