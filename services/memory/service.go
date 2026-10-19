@@ -13,6 +13,7 @@ import (
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/reflection"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/search"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/security"
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/workflows"
 	"github.com/vproject111/RAE-Suite-go/pkg/raemesh"
 )
 
@@ -25,6 +26,7 @@ type Service struct {
 	gateway   *search.LogicGateway
 	mesh      *raemesh.MeshEngine
 	guard     *security.HardFramesGuard
+	scrubber  *workflows.IngestionPIIScrubber
 }
 
 // NewService constructs a full 8-layer RAE-Memory Service.
@@ -39,6 +41,7 @@ func NewService(store ports.MemoryStoragePort, outbox ports.OutboxQueuePort, gua
 		gateway:   search.NewLogicGateway(nil),
 		mesh:      raemesh.NewMeshEngine(store, guard),
 		guard:     guard,
+		scrubber:  workflows.NewIngestionPIIScrubber(),
 	}
 }
 
@@ -262,9 +265,18 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"status":  "healthy",
-			"version": "4.2.0",
+			"version": "4.3.0",
 			"layers":  models.AllMemoryLayers(),
 		})
+	})
+
+	mux.HandleFunc("/v2/memories/scrub", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Text string `json:"text"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		res := s.scrubber.ScrubText(req.Text)
+		writeJSON(w, http.StatusOK, res)
 	})
 
 	mux.HandleFunc("/v2/memories/", func(w http.ResponseWriter, r *http.Request) {
@@ -274,6 +286,13 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 			if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 				return
+			}
+			if item.Metadata != nil {
+				if scrubFlag, ok := item.Metadata["scrub_pii"].(bool); ok && scrubFlag {
+					scrubRes := s.scrubber.ScrubText(item.Content)
+					item.Content = scrubRes.ScrubbedText
+					item.Metadata["pii_redactions"] = scrubRes.RedactionsCount
+				}
 			}
 			if err := s.store.StoreMemory(r.Context(), &item); err != nil {
 				writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
