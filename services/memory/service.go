@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/vproject111/RAE-Suite-go/pkg/drivers/agnostic"
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/graph"
+	raemath "github.com/vproject111/RAE-Suite-go/pkg/raecore/math"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/models"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/ports"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/reflection"
@@ -21,15 +23,19 @@ import (
 // Service implements Module 3: RAE-Memory (8 Storage Layers, L1-L4 Reflection,
 // 9 Search Strategies, Procedural Oracle, Sycon Knowledge Resolve, OutboxDispatcher, AgnosticStorageBroker & RAE-Mesh).
 type Service struct {
-	store     ports.MemoryStoragePort
-	broker    *agnostic.AgnosticStorageBroker
-	outbox    ports.OutboxQueuePort
-	reflector *reflection.Coordinator
-	gateway   *search.LogicGateway
-	mesh      *raemesh.MeshEngine
-	guard     *security.HardFramesGuard
-	scrubber  *workflows.IngestionPIIScrubber
-	scheduler *BackgroundScheduler
+	store         ports.MemoryStoragePort
+	broker        *agnostic.AgnosticStorageBroker
+	outbox        ports.OutboxQueuePort
+	mathCtrl      *raemath.MathController
+	ibSelector    *raemath.InformationBottleneckSelector
+	temporalGraph *graph.TemporalGraphService
+	provenanceSvc *security.ContextProvenanceService
+	reflector     *reflection.Coordinator
+	gateway       *search.LogicGateway
+	mesh          *raemesh.MeshEngine
+	guard         *security.HardFramesGuard
+	scrubber      *workflows.IngestionPIIScrubber
+	scheduler     *BackgroundScheduler
 }
 
 // NewService constructs a full 8-layer database-agnostic RAE-Memory Service.
@@ -37,17 +43,22 @@ func NewService(store ports.MemoryStoragePort, outbox ports.OutboxQueuePort, gua
 	if guard == nil {
 		guard = security.NewHardFramesGuard("")
 	}
+	mc := raemath.NewMathController(models.MathL3)
 	broker := agnostic.NewAgnosticStorageBroker(store)
 	return &Service{
-		store:     broker,
-		broker:    broker,
-		outbox:    outbox,
-		reflector: reflection.NewCoordinator(),
-		gateway:   search.NewLogicGateway(nil),
-		mesh:      raemesh.NewMeshEngine(broker, guard),
-		guard:     guard,
-		scrubber:  workflows.NewIngestionPIIScrubber(),
-		scheduler: &BackgroundScheduler{Running: true, IntervalSec: 60, LastRunAt: time.Now().UTC()},
+		store:         broker,
+		broker:        broker,
+		outbox:        outbox,
+		mathCtrl:      mc,
+		ibSelector:    raemath.NewInformationBottleneckSelector(0.45),
+		temporalGraph: graph.NewTemporalGraphService(),
+		provenanceSvc: security.NewContextProvenanceService(),
+		reflector:     reflection.NewCoordinator(),
+		gateway:       search.NewLogicGateway(mc),
+		mesh:          raemesh.NewMeshEngine(broker, guard),
+		guard:         guard,
+		scrubber:      workflows.NewIngestionPIIScrubber(),
+		scheduler:     &BackgroundScheduler{Running: true, IntervalSec: 60, LastRunAt: time.Now().UTC()},
 	}
 }
 
@@ -270,10 +281,11 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 	s.RegisterExtendedRoutes(mux)
 	s.registerV45Routes(mux)
 	s.registerV46Routes(mux)
+	s.registerV47Routes(mux)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"status":          "healthy",
-			"version":         "4.6.0",
+			"version":         "4.7.0",
 			"storage_backend": string(s.broker.ActiveBackend()),
 			"layers":          models.AllMemoryLayers(),
 		})
@@ -303,6 +315,12 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 					item.Metadata["pii_redactions"] = scrubRes.RedactionsCount
 				}
 			}
+			if item.Importance <= 0 {
+				scored, _ := s.store.QueryMemories(r.Context(), ports.QueryFilter{Project: item.Project, TopK: 25})
+				existing := unwrapScoredMemories(scored)
+				bd := raemath.ComputeSixFactorImportance(item, existing, len(item.Tags))
+				item.Importance = bd.CompositeScore
+			}
 			if err := s.store.StoreMemory(r.Context(), &item); err != nil {
 				writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 				return
@@ -315,10 +333,11 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 				})
 			}
 			writeJSON(w, http.StatusOK, map[string]interface{}{
-				"id":        item.ID,
-				"memory_id": item.ID,
-				"layer":     item.Layer,
-				"status":    "saved",
+				"id":         item.ID,
+				"memory_id":  item.ID,
+				"layer":      item.Layer,
+				"importance": item.Importance,
+				"status":     "saved",
 			})
 		case http.MethodDelete:
 			id := strings.TrimPrefix(r.URL.Path, "/v2/memories/")

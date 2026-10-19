@@ -142,6 +142,46 @@ func (mc *MathController) UpdateReward(armID string, reward float64) MABWeights 
 	}
 }
 
+// SelectArm selects the optimal ManifoldArm using Upper Confidence Bound (UCB1) exploration/exploitation.
+func (mc *MathController) SelectArm() string {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+
+	totalPulls := 0
+	for _, arm := range mc.atlas {
+		totalPulls += arm.Pulls
+	}
+
+	bestArm := mc.activeArm
+	bestUCB := -1.0
+	for id, arm := range mc.atlas {
+		var ucb float64
+		if arm.Pulls == 0 {
+			ucb = 1.0 + arm.Alpha*0.5 + arm.Beta*0.3
+		} else {
+			meanReward := arm.CumulativeScore / float64(arm.Pulls)
+			exploration := math.Sqrt((2.0 * math.Log(float64(totalPulls+1))) / float64(arm.Pulls))
+			ucb = meanReward + 0.25*exploration
+		}
+		if ucb > bestUCB || (ucb == bestUCB && id < bestArm) {
+			bestUCB = ucb
+			bestArm = id
+		}
+	}
+	if bestArm != "" {
+		mc.activeArm = bestArm
+		if arm, ok := mc.atlas[bestArm]; ok {
+			arm.Pulls++
+			arm.CumulativeScore += 0.75
+			mc.alpha = clamp(0.8*mc.alpha+0.2*arm.Alpha, 0.05, 0.85)
+			mc.beta = clamp(0.8*mc.beta+0.2*arm.Beta, 0.05, 0.85)
+			mc.gamma = clamp(1.0-mc.alpha-mc.beta, 0.05, 0.85)
+		}
+	}
+	return mc.activeArm
+}
+
+
 // ScoreMemory computes the composite L1/L2/L3 score for a memory item.
 func (mc *MathController) ScoreMemory(item models.MemoryItem, similarity float64, now time.Time) (float64, map[string]float64) {
 	mc.mu.RLock()

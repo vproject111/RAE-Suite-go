@@ -241,6 +241,24 @@ func (c *EnterpriseCatalog) CompleteTask(taskID string, result map[string]interf
 	return t, true
 }
 
+// ListPendingTasks returns all PENDING tasks matching nodeID (or all pending tasks if nodeID is empty).
+func (c *EnterpriseCatalog) ListPendingTasks(nodeID string) []DelegatedTaskRecord {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	out := make([]DelegatedTaskRecord, 0)
+	for _, t := range c.tasks {
+		if t.Status != "PENDING" {
+			continue
+		}
+		if nodeID != "" && t.NodeID != nodeID && t.NodeID != "" {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+
 // RecordTokenSaving appends an entry to the token_savings_log.
 func (c *EnterpriseCatalog) RecordTokenSaving(tenantID, project string, tokens int, costUSD float64, strategy string) {
 	c.mu.Lock()

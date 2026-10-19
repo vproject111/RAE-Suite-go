@@ -265,6 +265,7 @@ func (s *Service) ListRecipes() []RefactoringRecipe {
 
 // RegisterRoutes attaches all RAE-Phoenix HTTP & MCP endpoints (:8012).
 func (s *Service) RegisterRoutes(mux *http.ServeMux) {
+	s.registerV47MetaRoutes(mux)
 	writeJSON := func(w http.ResponseWriter, status int, data interface{}) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
