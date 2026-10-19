@@ -307,4 +307,21 @@ func (s *Service) registerOpsRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, s.evalHarness.EvaluatePrompt(req.Prompt, req.CurrentCost, req.MaxBudget, req.RiskClass))
 	})
+
+	// 14. Hermes + OpenCode Direct Bridge (Replaces OpenClaw)
+	hermesBridge := ops.NewHermesOpenCodeBridge()
+	mux.HandleFunc("/v2/ops/hermes-opencode", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"openclaw_disabled": true,
+				"hermes_endpoint":   hermesBridge.HermesEndpoint,
+				"opencode_bin":      hermesBridge.OpenCodeBin,
+				"status":            "active",
+			})
+			return
+		}
+		var req ops.HermesOpenCodeRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		writeJSON(w, http.StatusOK, hermesBridge.Dispatch(req))
+	})
 }

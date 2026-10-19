@@ -575,6 +575,62 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 			"version_cid": pkg.VersionCID,
 		})
 	})
+
+	mux.HandleFunc("/v2/crl/export", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Project string `json:"project"`
+			Format  string `json:"format"` // markdown, latex, both
+			Title   string `json:"title"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req.Project == "" {
+			req.Project = r.URL.Query().Get("project")
+		}
+		if req.Format == "" {
+			req.Format = r.URL.Query().Get("format")
+		}
+		if req.Format == "" {
+			req.Format = "both"
+		}
+		writeJSON(w, http.StatusOK, s.ExportPublication(r.Context(), req.Project, req.Title, req.Format))
+	})
+}
+
+// ExportPublication generates a complete Markdown and/or LaTeX scientific research report from RAE-CRL artifacts.
+func (s *Service) ExportPublication(ctx context.Context, project, title, format string) map[string]interface{} {
+	if title == "" {
+		title = "RAE-CRL Autonomous Epistemic Research Report"
+	}
+	arts, _ := s.epistemic.ListArtifacts(ctx, project, "")
+
+	var md strings.Builder
+	md.WriteString("# " + title + "\n\n")
+	md.WriteString(fmt.Sprintf("- **Project**: `%s`\n- **Total Epistemic Artifacts**: `%d`\n\n", project, len(arts)))
+	md.WriteString("## Artifacts & Experimental Findings\n\n")
+	md.WriteString("| ID | Type | Title | Status |\n|---|---|---|---|\n")
+	for _, a := range arts {
+		md.WriteString(fmt.Sprintf("| `%s` | `%s` | %s | `%s` |\n", a.ID, a.Type, a.Title, a.Status))
+	}
+
+	var tex strings.Builder
+	tex.WriteString("\\documentclass{article}\n\\usepackage[utf8]{inputenc}\n\\usepackage{booktabs}\n")
+	tex.WriteString("\\title{" + title + "}\n\\author{RAE-CRL Cognitive Research Layer v4.5.0}\n\\begin{document}\n\\maketitle\n")
+	tex.WriteString("\\section{Epistemic Summary}\n")
+	tex.WriteString(fmt.Sprintf("Project \\texttt{%s} contains %d verified epistemic artifacts.\\\\\n", project, len(arts)))
+	tex.WriteString("\\begin{tabular}{llll}\\toprule\nID & Type & Title & Status \\\\ \\midrule\n")
+	for _, a := range arts {
+		tex.WriteString(fmt.Sprintf("%s & %s & %s & %s \\\\\n", a.ID, a.Type, a.Title, a.Status))
+	}
+	tex.WriteString("\\bottomrule\\end{tabular}\n\\end{document}\n")
+
+	return map[string]interface{}{
+		"project":         project,
+		"title":           title,
+		"format":          format,
+		"artifacts_count": len(arts),
+		"markdown":        md.String(),
+		"latex":           tex.String(),
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
