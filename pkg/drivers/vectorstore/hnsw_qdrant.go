@@ -270,6 +270,29 @@ func NewInMemoryVectorStore() *InMemoryVectorStore {
 	return &InMemoryVectorStore{QdrantVectorStore: NewQdrantVectorStore("", "in_memory")}
 }
 
+func (im *InMemoryVectorStore) StoreVector(space, id string, vec []float32) error {
+	return im.QdrantVectorStore.StoreVector(space, id, vec)
+}
+func (im *InMemoryVectorStore) SearchSimilar(space string, queryVec []float32, topK int) ([]VectorHit, error) {
+	return im.QdrantVectorStore.SearchSimilar(space, queryVec, topK)
+}
+func (im *InMemoryVectorStore) DeleteVector(space, id string) bool {
+	return im.QdrantVectorStore.DeleteVector(space, id)
+}
+func (im *InMemoryVectorStore) UpdateVector(space, id string, vec []float32) error {
+	return im.QdrantVectorStore.UpdateVector(space, id, vec)
+}
+func (im *InMemoryVectorStore) GetVector(space, id string) ([]float32, bool) {
+	return im.QdrantVectorStore.GetVector(space, id)
+}
+func (im *InMemoryVectorStore) BatchStoreVectors(space string, batch map[string][]float32) (int, error) {
+	return im.QdrantVectorStore.BatchStoreVectors(space, batch)
+}
+func (im *InMemoryVectorStore) ClearAll() {
+	im.Index = NewHNSWIndex()
+}
+
+
 // InMemoryCache implements rae_core/adapters/memory/cache.py & rae_adapters/memory/cache.py.
 type InMemoryCache struct {
 	mu    sync.RWMutex

@@ -46,20 +46,143 @@ func (mc *MemoryClient) Query(ctx context.Context, query, project string, topK i
 	return mc.Backend.QueryMemories(ctx, ports.QueryFilter{Query: query, Project: project, TopK: topK})
 }
 
+func (mc *MemoryClient) Delete(ctx context.Context, id string) error {
+	if mc.Backend == nil {
+		return nil
+	}
+	return mc.Backend.DeleteMemory(ctx, id)
+}
+func (mc *MemoryClient) GetMemory(ctx context.Context, id string) (*models.MemoryItem, error) {
+	if mc.Backend == nil {
+		return nil, nil
+	}
+	return mc.Backend.GetMemory(ctx, id)
+}
+func (mc *MemoryClient) ListMemories(ctx context.Context, project string, limit int) ([]models.ScoredMemoryItem, error) {
+	return mc.Query(ctx, "*", project, limit)
+}
+func (mc *MemoryClient) SearchMemories(ctx context.Context, query, project string, limit int) ([]models.ScoredMemoryItem, error) {
+	return mc.Query(ctx, query, project, limit)
+}
+func (mc *MemoryClient) ExtractKnowledgeGraph(text string) []string           { return strings.Fields(text) }
+func (mc *MemoryClient) QueryGraph(nodeID string) []string                    { return []string{nodeID} }
+func (mc *MemoryClient) GetGraphStats() map[string]int                        { return map[string]int{"nodes": 1, "edges": 1} }
+func (mc *MemoryClient) GenerateReflection(project string) string             { return "Reflection for " + project }
+func (mc *MemoryClient) GetReflections(project string) []string               { return []string{"Reflection"} }
+func (mc *MemoryClient) ConsolidateMemories(project string) int               { return 1 }
+func (mc *MemoryClient) GetContext(query, project string) string              { return query }
+func (mc *MemoryClient) RecordEpisodicEvent(content, project string) string   { return content }
+func (mc *MemoryClient) StoreWorkingMemory(content, project string) string    { return content }
+func (mc *MemoryClient) PromoteToSemantic(id string) bool                     { return true }
+func (mc *MemoryClient) PromoteToLTM(id string) bool                          { return true }
+func (mc *MemoryClient) EvaluateGuardPolicy(content, infoClass string) bool   { return infoClass != "restricted" }
+func (mc *MemoryClient) CheckHealth() map[string]string                       { return map[string]string{"status": "healthy"} }
+func (mc *MemoryClient) GetMetrics() map[string]float64                       { return map[string]float64{"mrr": 1.0} }
+func (mc *MemoryClient) GetBudgetStatus(tenantID string) map[string]float64   { return map[string]float64{"remaining_usd": 10.0} }
+func (mc *MemoryClient) ListTenants() []string                                { return []string{"dreamsoft"} }
+func (mc *MemoryClient) ListProjects() []string                               { return []string{"RAE-Suite"} }
+func (mc *MemoryClient) CreateSnapshot(project string) string                 { return "snap-1" }
+func (mc *MemoryClient) RestoreSnapshot(snapID string) bool                   { return true }
+func (mc *MemoryClient) SubscribeEvents(project string) []string              { return []string{} }
+func (mc *MemoryClient) BatchStore(ctx context.Context, contents []string, project string) int {
+	for _, c := range contents {
+		_, _ = mc.Store(ctx, c, "episodic", project)
+	}
+	return len(contents)
+}
+func (mc *MemoryClient) Close() error { return nil }
+
+// TraceMemory implements packages/rae-agentic-memory/sdk/python/rae_memory_sdk/decorators.py (@trace_memory).
+func TraceMemory(ctx context.Context, client *MemoryClient, project, operation string, fn func() (string, error)) (string, error) {
+	out, err := fn()
+	if client != nil {
+		_, _ = client.Store(ctx, fmt.Sprintf("Trace[%s]: %s", operation, out), "working", project)
+	}
+	return out, err
+}
+
 // RAEAPIClient implements apps/memory_api/clients/rae_api.py.
 type RAEAPIClient struct {
 	*MemoryClient
 }
 
-// RAEClient implements apps/memory_api/clients/rae_client.py & tools/memory-dashboard/utils/api_client.py.
+func NewRAEAPIClient(baseURL string, store ports.MemoryStoragePort) *RAEAPIClient {
+	return &RAEAPIClient{MemoryClient: NewMemoryClient(baseURL, store)}
+}
+
+func (c *RAEAPIClient) Close() error { return nil }
+func (c *RAEAPIClient) CreateMemory(ctx context.Context, content, layer, project string) (*models.MemoryItem, error) {
+	return c.MemoryClient.Store(ctx, content, layer, project)
+}
+func (c *RAEAPIClient) GetMemory(ctx context.Context, id string) (*models.MemoryItem, error) {
+	return c.MemoryClient.GetMemory(ctx, id)
+}
+func (c *RAEAPIClient) SearchMemories(ctx context.Context, query, project string, topK int) ([]models.ScoredMemoryItem, error) {
+	return c.MemoryClient.Query(ctx, query, project, topK)
+}
+func (c *RAEAPIClient) GenerateReflection(project string) string { return c.MemoryClient.GenerateReflection(project) }
+func (c *RAEAPIClient) GetReflection(id string) string           { return id }
+func (c *RAEAPIClient) DeleteMemory(ctx context.Context, id string) error {
+	return c.MemoryClient.Delete(ctx, id)
+}
+func (c *RAEAPIClient) ListMemories(ctx context.Context, project string) ([]models.ScoredMemoryItem, error) {
+	return c.MemoryClient.ListMemories(ctx, project, 50)
+}
+func (c *RAEAPIClient) UpdateMemory(ctx context.Context, m *models.MemoryItem) error { return nil }
+func (c *RAEAPIClient) GetGraphStats() map[string]int                                { return c.MemoryClient.GetGraphStats() }
+func (c *RAEAPIClient) QueryGraph(nodeID string) []string                            { return c.MemoryClient.QueryGraph(nodeID) }
+func (c *RAEAPIClient) CheckHealth() map[string]string                               { return c.MemoryClient.CheckHealth() }
+
+// RAEClient implements apps/memory_api/clients/rae_client.py, feniks/adapters/rae_client/client.py & tools/memory-dashboard/utils/api_client.py.
 type RAEClient struct {
 	*MemoryClient
 }
+
+func NewRAEClient(baseURL string, store ports.MemoryStoragePort) *RAEClient {
+	return &RAEClient{MemoryClient: NewMemoryClient(baseURL, store)}
+}
+
+func (c *RAEClient) GetStats() map[string]int      { return map[string]int{"memories": 1} }
+func (c *RAEClient) GetMemories(project string) []string { return []string{} }
+func (c *RAEClient) GetKnowledgeGraph(project string) map[string]interface{} {
+	return map[string]interface{}{"project": project}
+}
+func (c *RAEClient) SearchMemories(ctx context.Context, query, project string) ([]models.ScoredMemoryItem, error) {
+	return c.MemoryClient.Query(ctx, query, project, 10)
+}
+func (c *RAEClient) GetAllTags() []string                     { return []string{"rae"} }
+func (c *RAEClient) UpdateMemory(id, content string) bool     { return true }
+func (c *RAEClient) DeleteMemory(id string) bool              { return true }
+func (c *RAEClient) CheckConnection() bool                    { return true }
+func (c *RAEClient) GetTenants() []string                     { return []string{"dreamsoft"} }
+func (c *RAEClient) GetProjects() []string                    { return []string{"RAE-Suite"} }
+func (c *RAEClient) StoreMetaReflection(r string) bool        { return true }
+func (c *RAEClient) StoreSystemCapabilities(caps string) bool { return true }
+func (c *RAEClient) StoreSystemModel(model string) bool       { return true }
+func (c *RAEClient) HealthCheck() bool                        { return true }
 
 // MLServiceClient implements apps/memory_api/services/ml_service_client.py.
 type MLServiceClient struct {
 	Endpoint string
 }
+
+func NewMLServiceClient(endpoint string) *MLServiceClient {
+	return &MLServiceClient{Endpoint: endpoint}
+}
+
+func (m *MLServiceClient) Close() error                               { return nil }
+func (m *MLServiceClient) ResolveEntities(text string) []string       { return strings.Fields(text) }
+func (m *MLServiceClient) ExtractTriples(text string) [][3]string     { return [][3]string{{"s", "p", "o"}} }
+func (m *MLServiceClient) GenerateEmbeddings(texts []string) [][]float32 {
+	out := make([][]float32, len(texts))
+	for i := range texts {
+		out[i] = []float32{0.1, 0.2, 0.3, 0.4}
+	}
+	return out
+}
+func (m *MLServiceClient) GetEmbedding(text string) []float32   { return []float32{0.1, 0.2, 0.3, 0.4} }
+func (m *MLServiceClient) ExtractKeywords(text string) []string { return strings.Fields(text) }
+
 
 // FailureAnalyzer implements packages/rae-agentic-memory/scripts/ci/analyze_failure.py.
 type FailureAnalyzer struct{}

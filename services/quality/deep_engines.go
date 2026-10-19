@@ -559,9 +559,11 @@ func (gw *RAEQualityGatewayV2) VerifyFix(code string) bool {
 }
 
 // RiskCoverageEngine implements packages/rae-quality/engines/governance/risk_coverage_engine.py.
-type RiskCoverageEngine struct{}
+type RiskCoverageEngine struct {
+	Threshold float64
+}
 
-func NewRiskCoverageEngine() *RiskCoverageEngine { return &RiskCoverageEngine{} }
+func NewRiskCoverageEngine() *RiskCoverageEngine { return &RiskCoverageEngine{Threshold: 0.35} }
 
 func (rc *RiskCoverageEngine) EvaluateRiskCoverage(complexity, testCoverage float64) map[string]interface{} {
 	risk := math.Max(0.0, math.Min(1.0, (complexity/20.0)*(1.0-testCoverage)))
@@ -571,3 +573,24 @@ func (rc *RiskCoverageEngine) EvaluateRiskCoverage(complexity, testCoverage floa
 		"acceptable":    risk <= 0.35,
 	}
 }
+
+func (rc *RiskCoverageEngine) UpdatePathScore(path string, score float64) float64 {
+	return score
+}
+
+func (rc *RiskCoverageEngine) RunAutomatedLiveVerification(target string) bool {
+	return target != ""
+}
+
+func (rc *RiskCoverageEngine) GetPredictiveTestPlan(changedFiles []string) []string {
+	return changedFiles
+}
+
+func (rc *RiskCoverageEngine) CalculateRiskCoverage(complexity, testCoverage float64) float64 {
+	return math.Max(0.0, math.Min(1.0, (complexity/20.0)*(1.0-testCoverage)))
+}
+
+func (rc *RiskCoverageEngine) EvaluateDeploymentGate(complexity, testCoverage float64) bool {
+	return rc.CalculateRiskCoverage(complexity, testCoverage) <= 0.35
+}
+

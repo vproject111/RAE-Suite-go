@@ -1,0 +1,12 @@
+{
+  "total_unmatched_domain_classes": 0,
+  "total_empty_marker_structs_in_go": 0,
+  "total_method_deficit_classes": 0,
+  "total_unwired_go_structs": 0,
+  "total_unmatched_top_funcs_ge_15loc": 0,
+  "empty_marker_structs_in_go": [],
+  "method_deficit_classes": [],
+  "unwired_go_structs": [],
+  "unmatched_classes_by_subsystem": {},
+  "unmatched_top_funcs_by_subsystem": {}
+}

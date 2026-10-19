@@ -92,6 +92,34 @@ type RAEState struct {
 	Timestamp      time.Time               `json:"timestamp"`
 }
 
+func (s *RAEState) ToDict() map[string]interface{} {
+	return map[string]interface{}{
+		"step":            s.Step,
+		"token_pressure":  s.WorkingContext.TokenPressure,
+		"total_memories":  s.MemoryState.TotalCount,
+		"layer_entropy":   s.MemoryState.LayerEntropy,
+		"is_exhausted":    s.BudgetState.IsExhausted,
+		"graph_density":   s.GraphState.Density,
+	}
+}
+
+func (s *RAEState) Compare(other RAEState) map[string]float64 {
+	return map[string]float64{
+		"entropy_delta":  s.MemoryState.LayerEntropy - other.MemoryState.LayerEntropy,
+		"pressure_delta": s.WorkingContext.TokenPressure - other.WorkingContext.TokenPressure,
+		"density_delta":  s.GraphState.Density - other.GraphState.Density,
+	}
+}
+
+func (s *RAEState) IsValid() bool {
+	return s.WorkingContext.MaxTokens >= 0 && s.MemoryState.TotalCount >= 0
+}
+
+func (s *RAEState) LogState() map[string]interface{} {
+	return s.ToDict()
+}
+
+
 // ComputeStateFromMemories constructs a live RAEState s_t from current memory items, graph stats, and budget.
 func ComputeStateFromMemories(items []models.MemoryItem, maxContextTokens int, remainingTokens int, remainingUSD float64, nodeCount, edgeCount int) RAEState {
 	if maxContextTokens <= 0 {

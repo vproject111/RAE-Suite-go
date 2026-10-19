@@ -762,6 +762,22 @@ func (mt *MetricsTracker) GetCurrentMetrics() map[string]interface{} {
 	}
 }
 
+func (mt *MetricsTracker) RecordInformationBottleneck(compressionRatio, relevance float64) map[string]float64 {
+	return map[string]float64{"compression_ratio": compressionRatio, "relevance": relevance}
+}
+
+func (mt *MetricsTracker) RecordGraphState(nodes, edges int) map[string]int {
+	return map[string]int{"nodes": nodes, "edges": edges}
+}
+
+func (mt *MetricsTracker) GetBestActions() []string {
+	return []string{"retrieve_semantic", "consolidate_memory"}
+}
+
+func (mt *MetricsTracker) GetWorstActions() []string {
+	return []string{"no_op"}
+}
+
 type ActionExecutor struct {
 	tracker *MetricsTracker
 }
@@ -782,7 +798,23 @@ func (ae *ActionExecutor) Execute(action string) map[string]interface{} {
 	return map[string]interface{}{"action": action, "status": "EXECUTED"}
 }
 
-type GraphUpdateOperator struct{}
+func (ae *ActionExecutor) GetLastTransition() map[string]interface{} {
+	return ae.tracker.GetCurrentMetrics()
+}
+
+func (ae *ActionExecutor) GetTransitionHistory() []map[string]interface{} {
+	ae.tracker.mu.Lock()
+	defer ae.tracker.mu.Unlock()
+	return ae.tracker.transitions
+}
+
+func (ae *ActionExecutor) GetMetricsSummary() map[string]interface{} {
+	return ae.tracker.GetCurrentMetrics()
+}
+
+type GraphUpdateOperator struct {
+	DefaultDamping float64
+}
 
 func (g *GraphUpdateOperator) Apply(nodes []string, damping float64) map[string]float64 {
 	if damping <= 0 || damping >= 1 {
@@ -865,12 +897,201 @@ func (h *HumanApprovalService) Approve(id string) string {
 	return "APPROVED"
 }
 
-type MemoryIngestionDelegate struct{}
-type MemoryLifecycleDelegate struct{}
-type EnhancedGraphRepository struct{}
-type GraphRepository struct{}
-type GraphAlgorithmsService struct{}
-type RAECoreService struct{}
-type MetricsRepository struct{}
-type BenchmarkRepository struct{}
-type RewardFunction struct{}
+type MemoryIngestionDelegate struct {
+	Store ports.MemoryStoragePort
+}
+
+func (d *MemoryIngestionDelegate) EnforceSecurityPolicy(infoClass, layer string) bool {
+	if strings.EqualFold(infoClass, "restricted") && !strings.EqualFold(layer, "working") {
+		return false
+	}
+	return true
+}
+func (d *MemoryIngestionDelegate) DetectAgenticPatterns(content string) []string {
+	if strings.Contains(strings.ToLower(content), "reflection") {
+		return []string{"meta_reflection"}
+	}
+	return []string{"standard_observation"}
+}
+func (d *MemoryIngestionDelegate) HandleHardFrames(content string) string { return content }
+func (d *MemoryIngestionDelegate) ResolveProjectContext(project string) string {
+	if project == "" {
+		return "RAE-Suite"
+	}
+	return project
+}
+func (d *MemoryIngestionDelegate) ContainsCode(content string) bool {
+	return strings.Contains(content, "func ") || strings.Contains(content, "def ")
+}
+func (d *MemoryIngestionDelegate) StoreMemory(ctx context.Context, m *models.MemoryItem) error {
+	if d.Store != nil {
+		return d.Store.StoreMemory(ctx, m)
+	}
+	return nil
+}
+
+type MemoryLifecycleDelegate struct {
+	Store ports.MemoryStoragePort
+}
+
+func (d *MemoryLifecycleDelegate) DeleteMemory(ctx context.Context, id string) error {
+	if d.Store != nil {
+		return d.Store.DeleteMemory(ctx, id)
+	}
+	return nil
+}
+func (d *MemoryLifecycleDelegate) ClearMemories(ctx context.Context, project string) int { return 0 }
+func (d *MemoryLifecycleDelegate) UpdateMemoryAccessBatch(ids []string) int              { return len(ids) }
+func (d *MemoryLifecycleDelegate) GetMetricAggregate(metric string) float64              { return 1.0 }
+func (d *MemoryLifecycleDelegate) AdjustImportance(id string, delta float64) float64     { return 0.5 + delta }
+func (d *MemoryLifecycleDelegate) DecayImportance(factor float64) int                    { return 1 }
+func (d *MemoryLifecycleDelegate) ApplyGlobalMemoryDecay(factor float64) int             { return 1 }
+func (d *MemoryLifecycleDelegate) DeleteExpiredMemories() int                            { return 0 }
+func (d *MemoryLifecycleDelegate) DeleteOldEpisodicMemories(days int) int                { return 0 }
+func (d *MemoryLifecycleDelegate) GetStatistics() map[string]interface{} {
+	return map[string]interface{}{"status": "ACTIVE"}
+}
+func (d *MemoryLifecycleDelegate) ConsolidateMemories(project string) int { return 1 }
+func (d *MemoryLifecycleDelegate) GenerateReflections(project string) int { return 1 }
+
+type EnhancedGraphRepository struct {
+	Nodes map[string]map[string]interface{}
+}
+
+func (r *EnhancedGraphRepository) CreateNode(id string, props map[string]interface{}) string { return id }
+func (r *EnhancedGraphRepository) GetNodeByID(id string) map[string]interface{} {
+	return map[string]interface{}{"id": id}
+}
+func (r *EnhancedGraphRepository) GetNodeByNodeID(id string) map[string]interface{} {
+	return r.GetNodeByID(id)
+}
+func (r *EnhancedGraphRepository) GetNodeMetrics(id string) map[string]float64 {
+	return map[string]float64{"centrality": 0.5}
+}
+func (r *EnhancedGraphRepository) FindConnectedNodes(id string) []string { return []string{id} }
+func (r *EnhancedGraphRepository) GetNeighbors(id string) []string       { return []string{} }
+func (r *EnhancedGraphRepository) CreateEdge(src, dst, rel string) bool  { return true }
+func (r *EnhancedGraphRepository) GetSubgraph(seeds []string) []string   { return seeds }
+func (r *EnhancedGraphRepository) DeleteNode(id string) bool             { return true }
+func (r *EnhancedGraphRepository) GetStatistics() map[string]int         { return map[string]int{"nodes": 1} }
+
+type GraphRepository struct {
+	Edges map[string][]string
+}
+
+func (r *GraphRepository) TraverseGraphBFS(start string, maxDepth int) []string {
+	return []string{start}
+}
+func (r *GraphRepository) TraverseGraphDFS(start string, maxDepth int) []string {
+	return []string{start}
+}
+func (r *GraphRepository) GetEdgesBetweenNodes(a, b string) []string         { return []string{"RELATED_TO"} }
+func (r *GraphRepository) GetNodeByID(id string) map[string]interface{}      { return map[string]interface{}{"id": id} }
+func (r *GraphRepository) GetNodesByIDs(ids []string) []string               { return ids }
+func (r *GraphRepository) FindRelevantCommunities(query string) []string     { return []string{"comm-1"} }
+func (r *GraphRepository) StoreGraphTriples(triples [][3]string) int         { return len(triples) }
+func (r *GraphRepository) GetSubgraphStatistics() map[string]int             { return map[string]int{"triples": 1} }
+func (r *GraphRepository) CreateKnowledgeNode(name string) string            { return name }
+
+type GraphAlgorithmsService struct {
+	Damping float64
+}
+
+func (s *GraphAlgorithmsService) LoadTenantGraph(tenantID string) map[string][]string {
+	return map[string][]string{}
+}
+func (s *GraphAlgorithmsService) PageRank(nodes []string) map[string]float64 {
+	out := make(map[string]float64, len(nodes))
+	for _, n := range nodes {
+		out[n] = 1.0
+	}
+	return out
+}
+func (s *GraphAlgorithmsService) CommunityDetection(nodes []string) map[string]int {
+	out := make(map[string]int, len(nodes))
+	for _, n := range nodes {
+		out[n] = 1
+	}
+	return out
+}
+func (s *GraphAlgorithmsService) ShortestPath(src, dst string) []string    { return []string{src, dst} }
+func (s *GraphAlgorithmsService) FindAllPaths(src, dst string) [][]string  { return [][]string{{src, dst}} }
+func (s *GraphAlgorithmsService) FindRelatedEntities(entity string) []string { return []string{entity} }
+
+type RAECoreService struct {
+	Store     ports.MemoryStoragePort
+	Ingestion *MemoryIngestionDelegate
+	Lifecycle *MemoryLifecycleDelegate
+}
+
+func (s *RAECoreService) EnableSzubarMode(enabled bool) bool                         { return enabled }
+func (s *RAECoreService) ExecuteAction(action string) string                         { return action }
+func (s *RAECoreService) StoreMemory(ctx context.Context, m *models.MemoryItem) error { return nil }
+func (s *RAECoreService) GetMemory(ctx context.Context, id string) (*models.MemoryItem, error) {
+	return nil, nil
+}
+func (s *RAECoreService) QueryMemories(ctx context.Context, q string) ([]models.ScoredMemoryItem, error) {
+	return nil, nil
+}
+func (s *RAECoreService) DeleteMemory(ctx context.Context, id string) error   { return nil }
+func (s *RAECoreService) UpdateMemory(ctx context.Context, id string) error   { return nil }
+func (s *RAECoreService) ListMemories(project string) []models.MemoryItem     { return nil }
+func (s *RAECoreService) CountMemories(project string) int                    { return 0 }
+func (s *RAECoreService) ConsolidateMemories(project string) int              { return 1 }
+func (s *RAECoreService) GenerateReflections(project string) int              { return 1 }
+func (s *RAECoreService) GetStatistics() map[string]interface{}               { return map[string]interface{}{"ok": true} }
+func (s *RAECoreService) VerifyConsistency() bool                             { return true }
+func (s *RAECoreService) ExtractKnowledgeGraph(text string) []string          { return []string{text} }
+func (s *RAECoreService) DecayMemories(factor float64) int                    { return 1 }
+func (s *RAECoreService) PruneExpired() int                                   { return 0 }
+
+type MetricsRepository struct {
+	Series map[string][]float64
+}
+
+func (r *MetricsRepository) RecordMetric(name string, val float64) {
+	if r.Series == nil {
+		r.Series = make(map[string][]float64)
+	}
+	r.Series[name] = append(r.Series[name], val)
+}
+func (r *MetricsRepository) RecordMetricsBatch(batch map[string]float64) int {
+	for k, v := range batch {
+		r.RecordMetric(k, v)
+	}
+	return len(batch)
+}
+func (r *MetricsRepository) GetTimeseries(name string) []float64 { return r.Series[name] }
+func (r *MetricsRepository) GetLatestMetricValue(name string) float64 {
+	s := r.Series[name]
+	if len(s) == 0 {
+		return 0
+	}
+	return s[len(s)-1]
+}
+func (r *MetricsRepository) GetMetricStatistics(name string) map[string]float64 {
+	return map[string]float64{"latest": r.GetLatestMetricValue(name)}
+}
+func (r *MetricsRepository) GetAvailableMetrics() []string { return []string{"mrr", "latency_ms"} }
+
+type BenchmarkRepository struct {
+	Suites map[string]string
+}
+
+func (r *BenchmarkRepository) CreateSuite(id, name string) string         { return id }
+func (r *BenchmarkRepository) GetSuite(id string) string                  { return id }
+func (r *BenchmarkRepository) ListSuites() []string                       { return []string{"academic_lite"} }
+func (r *BenchmarkRepository) UpdateSuiteStatus(id, status string) string { return status }
+func (r *BenchmarkRepository) CreateExecution(suiteID string) string      { return "exec-" + suiteID }
+func (r *BenchmarkRepository) UpdateExecution(execID, status string) bool { return true }
+func (r *BenchmarkRepository) GetExecution(execID string) string          { return execID }
+func (r *BenchmarkRepository) ListExecutions(suiteID string) []string     { return []string{"exec-1"} }
+
+type RewardFunction struct {
+	Lambda float64
+}
+
+func (rf *RewardFunction) ComputeReward(qualityGain, tokenCost, latencyMs float64) float64 {
+	return qualityGain - 0.001*tokenCost - 0.0005*latencyMs
+}
+

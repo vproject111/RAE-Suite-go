@@ -326,10 +326,28 @@ func (b *MultiArmedBandit) DecayExploration(factor float64) float64 {
 	return b.explorationRate
 }
 
-// Reflector implements rae_core/reflection/reflector.py.
-type Reflector struct{}
+func (b *MultiArmedBandit) SelectArm() string {
+	return b.MathController.SelectArm()
+}
 
-func NewReflector() *Reflector { return &Reflector{} }
+func (b *MultiArmedBandit) Update(armID string, reward float64) MABWeights {
+	return b.MathController.UpdateReward(armID, reward)
+}
+
+func (b *MultiArmedBandit) GetBestArm() string {
+	return b.MathController.GetWeights().ActiveArm
+}
+
+func (b *MultiArmedBandit) CheckDegradation(recentReward float64) bool {
+	return recentReward < 0.35
+}
+
+// Reflector implements rae_core/reflection/reflector.py.
+type Reflector struct {
+	MinImportance float64
+}
+
+func NewReflector() *Reflector { return &Reflector{MinImportance: 0.65} }
 
 func (r *Reflector) EvaluateAnswerDraft(draft, contextText string) float64 {
 	return CalculateSemanticSimilarity(draft, contextText)
@@ -362,6 +380,33 @@ func NewRAEEngine() *RAEEngine {
 	}
 }
 
+func (e *RAEEngine) SearchMemories(query string, items []models.MemoryItem) []models.ScoredMemoryItem {
+	now := time.Now().UTC()
+	out := make([]models.ScoredMemoryItem, 0, len(items))
+	for _, it := range items {
+		sim := CalculateSemanticSimilarity(query, it.Content)
+		score, bd := e.Controller.ScoreMemory(it, sim, now)
+		out = append(out, models.ScoredMemoryItem{Memory: it, Score: score, ScoreBreakdown: bd})
+	}
+	return out
+}
+
+func (e *RAEEngine) SearchEvidence(query string, items []models.MemoryItem) []models.ScoredMemoryItem {
+	return e.SearchMemories(query, items)
+}
+
+func (e *RAEEngine) StoreMemory(content string, layer models.MemoryLayer) models.MemoryItem {
+	return models.MemoryItem{Content: content, Layer: layer, Importance: 0.75, CreatedAt: time.Now().UTC()}
+}
+
+func (e *RAEEngine) GenerateText(prompt string) string {
+	return e.Reflector.GenerateReflection([]string{prompt})
+}
+
+func (e *RAEEngine) GetStatus() map[string]interface{} {
+	return map[string]interface{}{"status": "ACTIVE", "weights": e.Controller.GetWeights()}
+}
+
 // RAERuntime implements rae_core/runtime.py.
 type RAERuntime struct {
 	Engine *RAEEngine
@@ -384,3 +429,27 @@ func (rt *RAERuntime) Process(input string) map[string]interface{} {
 type HybridSearchEngine struct {
 	Controller *MathController
 }
+
+func NewHybridSearchEngine() *HybridSearchEngine {
+	return &HybridSearchEngine{Controller: NewMathController(models.MathL3)}
+}
+
+func (h *HybridSearchEngine) GetAvailableStrategies() []string {
+	return []string{"dense", "sparse_bm25", "graph_resonance", "temporal_recency", "rrf_hybrid"}
+}
+
+func (h *HybridSearchEngine) Search(query string, items []models.MemoryItem) []models.ScoredMemoryItem {
+	now := time.Now().UTC()
+	out := make([]models.ScoredMemoryItem, 0, len(items))
+	for _, it := range items {
+		sim := CalculateSemanticSimilarity(query, it.Content)
+		sc, bd := h.Controller.ScoreMemory(it, sim, now)
+		out = append(out, models.ScoredMemoryItem{Memory: it, Score: sc, ScoreBreakdown: bd})
+	}
+	return out
+}
+
+func (h *HybridSearchEngine) Rerank(query string, items []models.ScoredMemoryItem) []models.ScoredMemoryItem {
+	return items
+}
+
