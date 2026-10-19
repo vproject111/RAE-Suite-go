@@ -23,6 +23,7 @@ type ExtendedState struct {
 	mu          sync.RWMutex
 	snapshots   map[string]map[string][]string
 	triggers    map[string]map[string]interface{}
+	executions  []map[string]interface{}
 	workflows   map[string]map[string]interface{}
 	approvals   map[string]map[string]interface{}
 	abTests     map[string]map[string]interface{}
@@ -32,13 +33,14 @@ type ExtendedState struct {
 
 func newExtendedState() *ExtendedState {
 	return &ExtendedState{
-		snapshots: make(map[string]map[string][]string),
-		triggers:  make(map[string]map[string]interface{}),
-		workflows: make(map[string]map[string]interface{}),
-		approvals: make(map[string]map[string]interface{}),
-		abTests:   make(map[string]map[string]interface{}),
-		llmClient: llm.NewClient(),
-		catalog:   postgres.NewEnterpriseCatalog(),
+		snapshots:  make(map[string]map[string][]string),
+		triggers:   make(map[string]map[string]interface{}),
+		executions: make([]map[string]interface{}, 0),
+		workflows:  make(map[string]map[string]interface{}),
+		approvals:  make(map[string]map[string]interface{}),
+		abTests:    make(map[string]map[string]interface{}),
+		llmClient:  llm.NewClient(),
+		catalog:    postgres.NewEnterpriseCatalog(),
 	}
 }
 
@@ -224,7 +226,30 @@ func (s *Service) RegisterExtendedRoutes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, req)
 	})
 	mux.HandleFunc("/v2/compliance/approvals/", func(w http.ResponseWriter, r *http.Request) {
-		id := strings.TrimPrefix(r.URL.Path, "/v2/compliance/approvals/")
+		rawID := strings.TrimPrefix(r.URL.Path, "/v2/compliance/approvals/")
+		id := strings.TrimSuffix(rawID, "/approve")
+		if r.Method == http.MethodPost || r.Method == http.MethodPut {
+			var body map[string]interface{}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			ext.mu.Lock()
+			ap, ok := ext.approvals[id]
+			if !ok {
+				ap = map[string]interface{}{"request_id": id}
+			}
+			status := "APPROVED"
+			if s, has := body["status"].(string); has && s != "" {
+				status = s
+			}
+			ap["status"] = status
+			if by, has := body["approved_by"].(string); has && by != "" {
+				ap["approved_by"] = by
+			}
+			ap["updated_at"] = time.Now().UTC().Format(time.RFC3339)
+			ext.approvals[id] = ap
+			ext.mu.Unlock()
+			writeJSON(w, http.StatusOK, ap)
+			return
+		}
 		ext.mu.RLock()
 		ap, ok := ext.approvals[id]
 		ext.mu.RUnlock()
@@ -465,7 +490,43 @@ func (s *Service) RegisterExtendedRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/v2/automation/events/emit", func(w http.ResponseWriter, r *http.Request) {
 		var ev map[string]interface{}
 		_ = json.NewDecoder(r.Body).Decode(&ev)
-		writeJSON(w, http.StatusOK, map[string]interface{}{"status": "emitted", "event_id": models.GenerateUUIDv7(), "event": ev})
+		if ev == nil {
+			ev = make(map[string]interface{})
+		}
+		evID := models.GenerateUUIDv7()
+		evType, _ := ev["event_type"].(string)
+
+		ext.mu.Lock()
+		matched := 0
+		for tid, t := range ext.triggers {
+			enabled, _ := t["enabled"].(bool)
+			if !enabled {
+				continue
+			}
+			tEvType, _ := t["event_type"].(string)
+			if tEvType == "" || tEvType == "*" || tEvType == evType {
+				matched++
+				cnt, _ := t["execution_count"].(int)
+				t["execution_count"] = cnt + 1
+				ext.triggers[tid] = t
+				ext.executions = append(ext.executions, map[string]interface{}{
+					"execution_id": models.GenerateUUIDv7(),
+					"trigger_id":   tid,
+					"event_id":     evID,
+					"event_type":   evType,
+					"status":       "COMPLETED",
+					"executed_at":  time.Now().UTC().Format(time.RFC3339),
+				})
+			}
+		}
+		ext.mu.Unlock()
+
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"status":           "emitted",
+			"event_id":         evID,
+			"event":            ev,
+			"matched_triggers": matched,
+		})
 	})
 	mux.HandleFunc("/v2/automation/events/types", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -473,7 +534,11 @@ func (s *Service) RegisterExtendedRoutes(mux *http.ServeMux) {
 		})
 	})
 	mux.HandleFunc("/v2/automation/executions", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"executions": []interface{}{}, "status": "ok"})
+		ext.mu.RLock()
+		execs := make([]map[string]interface{}, len(ext.executions))
+		copy(execs, ext.executions)
+		ext.mu.RUnlock()
+		writeJSON(w, http.StatusOK, map[string]interface{}{"executions": execs, "count": len(execs), "status": "ok"})
 	})
 	mux.HandleFunc("/v2/automation/workflows/create", func(w http.ResponseWriter, r *http.Request) {
 		var wf map[string]interface{}
