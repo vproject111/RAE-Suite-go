@@ -28,6 +28,15 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 2 && (os.Args[1] == "scan-dir" || os.Args[1] == "-audit" || os.Args[1] == "--audit") {
+		res, err := svc.GatewayV2.ScanRepositoryDir(os.Args[2])
+		if err != nil {
+			log.Fatalf("scan-dir failed: %v", err)
+		}
+		out, _ := json.MarshalIndent(res, "", "  ")
+		fmt.Println(string(out))
+		return
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
