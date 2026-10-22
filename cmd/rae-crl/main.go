@@ -115,6 +115,6 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	svc.RegisterRoutes(mux)
-	log.Printf("RAE-CRL (Go Native v4.1) listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, mux))
+	log.Printf("RAE-CRL (Go Native v5.3.2) listening on :%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, security.WrapSecureHandler(mux)))
 }

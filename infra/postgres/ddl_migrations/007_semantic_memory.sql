@@ -386,3 +386,13 @@ COMMENT ON VIEW top_semantic_nodes IS 'Top 100 most active semantic nodes';
 -- ============================================================================
 -- END OF SCHEMA
 -- ============================================================================
+
+-- +goose Down
+DROP VIEW IF EXISTS top_semantic_nodes CASCADE;
+DROP VIEW IF EXISTS semantic_node_statistics CASCADE;
+DROP TABLE IF EXISTS semantic_index CASCADE;
+DROP TABLE IF EXISTS semantic_relationships CASCADE;
+DROP TABLE IF EXISTS semantic_nodes CASCADE;
+DROP TYPE IF EXISTS semantic_relation_type CASCADE;
+DROP TYPE IF EXISTS semantic_node_type CASCADE;
+

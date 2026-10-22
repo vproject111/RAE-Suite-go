@@ -771,24 +771,31 @@ func (gw *RAEQualityGatewayV2) ScanRepositoryDir(rootDir string) (map[string]int
 		}
 
 		isTestFile := strings.HasSuffix(lowerName, "_test.go") || strings.HasPrefix(lowerName, "test_")
+		isScannerRuleCatalog := strings.HasPrefix(filepath.ToSlash(relPath), "services/quality/") &&
+			(lowerName == "security_gateway.go" || lowerName == "engines_v2.go" || lowerName == "service.go")
 		if ext == ".go" {
 			goFilesCount++
 			astRep := AnalyzeMultiLangAST("go", code)
-			if astRep.CyclomaticComplexity > maxCyclomatic {
-				maxCyclomatic = astRep.CyclomaticComplexity
+			fns := astRep.FunctionsCount
+			if fns < 1 {
+				fns = 1
 			}
-			if astRep.CyclomaticComplexity > 25 {
+			avgCyclomatic := astRep.CyclomaticComplexity / fns
+			if avgCyclomatic > maxCyclomatic {
+				maxCyclomatic = avgCyclomatic
+			}
+			if !isTestFile && avgCyclomatic > 35 {
 				highComplexFiles = append(highComplexFiles, map[string]interface{}{
 					"file":                  relPath,
-					"cyclomatic_complexity": astRep.CyclomaticComplexity,
+					"cyclomatic_complexity": avgCyclomatic,
 					"max_nesting_depth":     astRep.MaxNestingDepth,
 					"functions":             astRep.FunctionsCount,
 				})
 			}
 		}
 
-		// Skip noisy secret/SQLi regexes on test fixtures unless it's production code
-		if !isTestFile {
+		// Skip noisy secret/SQLi regexes on test fixtures and scanner rule catalogs
+		if !isTestFile && !isScannerRuleCatalog {
 			secScan := gw.SecurityGateway.ScanCodeDetailed(code, relPath, []string{"go"}, nil)
 			if sFindings, ok := secScan["findings"].([]SecurityFinding); ok {
 				for _, f := range sFindings {

@@ -252,3 +252,13 @@ COMMENT ON VIEW model_cost_breakdown IS 'Cost breakdown by model and provider fo
 -- ============================================================================
 -- END OF SCHEMA
 -- ============================================================================
+
+-- +goose Down
+DROP VIEW IF EXISTS model_cost_breakdown CASCADE;
+DROP VIEW IF EXISTS monthly_cost_stats CASCADE;
+DROP VIEW IF EXISTS daily_cost_stats CASCADE;
+DROP TRIGGER IF EXISTS trigger_reset_budget_counters ON budgets;
+DROP FUNCTION IF EXISTS reset_budget_counters() CASCADE;
+DROP TABLE IF EXISTS cost_logs CASCADE;
+DROP TABLE IF EXISTS budgets CASCADE;
+

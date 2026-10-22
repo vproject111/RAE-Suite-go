@@ -112,7 +112,7 @@ func main() {
 			mux := http.NewServeMux()
 			reg(mux)
 			log.Printf("[%s] listening on %s", name, addr)
-			if err := http.ListenAndServe(addr, mux); err != nil {
+			if err := http.ListenAndServe(addr, security.WrapSecureHandler(mux)); err != nil {
 				log.Printf("[%s] stopped: %v", name, err)
 			}
 		}()

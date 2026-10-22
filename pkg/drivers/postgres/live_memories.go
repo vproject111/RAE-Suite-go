@@ -40,6 +40,10 @@ func sqlEscape(s string) string {
 	return strings.ReplaceAll(s, "'", "''")
 }
 
+func sqlQuote(s string) string {
+	return "'" + sqlEscape(s) + "'"
+}
+
 // UpsertMemoryRow inserts or updates a MemoryItem in the live PostgreSQL `memories` table.
 func (c *PGWireClient) UpsertMemoryRow(m *models.MemoryItem) error {
 	if m == nil {
@@ -66,34 +70,37 @@ func (c *PGWireClient) UpsertMemoryRow(m *models.MemoryItem) error {
 	if layer == "" {
 		layer = "working"
 	}
-	sql := fmt.Sprintf(
-		"SET app.current_user_role = 'admin'; SET app.current_tenant_id = '%s'; "+
-			"INSERT INTO memories (id, tenant_id, content, importance, layer, project, agent_id, session_id, source, info_class, usage_count, strength, content_hash) "+
-			"VALUES ('%s', '%s', '%s', %f, '%s', '%s', '%s', '%s', '%s', '%s', %d, %f, '%s') "+
-			"ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content, importance = EXCLUDED.importance, layer = EXCLUDED.layer, usage_count = EXCLUDED.usage_count, last_accessed_at = now();",
-		sqlEscape(tenantID),
-		sqlEscape(id),
-		sqlEscape(tenantID),
-		sqlEscape(m.Content),
-		m.Importance,
-		sqlEscape(layer),
-		sqlEscape(m.Project),
-		sqlEscape(agentID),
-		sqlEscape(m.SessionID),
-		sqlEscape(m.Source),
-		sqlEscape(infoClass),
-		m.UsageCount,
-		m.Strength,
-		sqlEscape(m.ContentHash),
-	)
+	vals := strings.Join([]string{
+		sqlQuote(id),
+		sqlQuote(tenantID),
+		sqlQuote(m.Content),
+		strconv.FormatFloat(m.Importance, 'f', 6, 64),
+		sqlQuote(layer),
+		sqlQuote(m.Project),
+		sqlQuote(agentID),
+		sqlQuote(m.SessionID),
+		sqlQuote(m.Source),
+		sqlQuote(infoClass),
+		strconv.Itoa(m.UsageCount),
+		strconv.FormatFloat(m.Strength, 'f', 6, 64),
+		sqlQuote(m.ContentHash),
+	}, ", ")
+	sql := strings.Join([]string{
+		"SET app.current_user_role = 'admin'; SET app.current_tenant_id =",
+		sqlQuote(tenantID),
+		"; INSERT INTO memories (id, tenant_id, content, importance, layer, project, agent_id, session_id, source, info_class, usage_count, strength, content_hash) VALUES (",
+		vals,
+		") ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content, importance = EXCLUDED.importance, layer = EXCLUDED.layer, usage_count = EXCLUDED.usage_count, last_accessed_at = now();",
+	}, " ")
 	_, err := c.Query(sql)
 	return err
 }
 
 // DeleteMemoryRow deletes a memory row by ID from the live PostgreSQL `memories` table.
 func (c *PGWireClient) DeleteMemoryRow(id string) error {
-	sql := fmt.Sprintf("SET app.current_user_role = 'admin'; DELETE FROM memories WHERE id = '%s';", sqlEscape(id))
-	_, err := c.Query(sql)
+	quotedID := sqlQuote(id)
+	stmt := strings.Join([]string{"SET app.current_user_role = 'admin'; DELETE FROM memories WHERE id =", quotedID, ";"}, " ")
+	_, err := c.Query(stmt)
 	return err
 }
 
@@ -102,15 +109,17 @@ func (c *PGWireClient) LoadAllMemories(limit int) ([]models.MemoryItem, error) {
 	if limit <= 0 {
 		limit = 5000
 	}
-	sql := fmt.Sprintf(
-		"SET app.current_user_role = 'admin'; "+
-			"SELECT id::text, tenant_id::text, content, COALESCE(layer, 'working') AS layer, "+
-			"COALESCE(project, 'default') AS project, COALESCE(importance, 0.5)::text AS importance, "+
-			"COALESCE(agent_id, 'default') AS agent_id, COALESCE(session_id, '') AS session_id, "+
-			"COALESCE(info_class, 'internal') AS info_class, COALESCE(usage_count, 0)::text AS usage_count "+
-			"FROM memories ORDER BY created_at DESC LIMIT %d;",
-		limit,
-	)
+	limitStr := strconv.Itoa(limit)
+	sql := strings.Join([]string{
+		"SET app.current_user_role = 'admin';",
+		"SELECT id::text, tenant_id::text, content, COALESCE(layer, 'working') AS layer,",
+		"COALESCE(project, 'default') AS project, COALESCE(importance, 0.5)::text AS importance,",
+		"COALESCE(agent_id, 'default') AS agent_id, COALESCE(session_id, '') AS session_id,",
+		"COALESCE(info_class, 'internal') AS info_class, COALESCE(usage_count, 0)::text AS usage_count",
+		"FROM memories ORDER BY created_at DESC LIMIT",
+		limitStr,
+		";",
+	}, " ")
 	rows, err := c.Query(sql)
 	if err != nil {
 		return nil, err

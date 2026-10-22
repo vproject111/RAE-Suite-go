@@ -7,6 +7,7 @@ import (
 
 	raemath "github.com/vproject111/RAE-Suite-go/pkg/raecore/math"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/models"
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/security"
 	"github.com/vproject111/RAE-Suite-go/services/lab"
 )
 
@@ -18,6 +19,6 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	svc.RegisterRoutes(mux)
-	log.Printf("RAE-Lab (Go Native v4.0) listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, mux))
+	log.Printf("RAE-Lab (Go Native v5.3.2) listening on :%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, security.WrapSecureHandler(mux)))
 }

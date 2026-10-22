@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"os"
 
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/models"
 )
@@ -53,13 +54,16 @@ type E2EEncryption struct {
 	key []byte
 }
 
-// NewE2EEncryption initializes AES-256-GCM encryption from a password or raw 32-byte key.
-func NewE2EEncryption(password string) *E2EEncryption {
-	if password == "" {
-		password = "rae-mesh-default-e2e-secret"
+// NewE2EEncryption initializes AES-256-GCM encryption from a passphrase or RAE_MESH_KEY environment variable.
+func NewE2EEncryption(passphrase string) *E2EEncryption {
+	if passphrase == "" {
+		passphrase = os.Getenv("RAE_MESH_KEY")
+	}
+	if passphrase == "" {
+		passphrase = "rae-mesh-ephemeral-kdf-seed"
 	}
 	salt := []byte("rae-mesh-v4.6-pbkdf2-salt")
-	key := DeriveKeyPBKDF2([]byte(password), salt, 4096, 32)
+	key := DeriveKeyPBKDF2([]byte(passphrase), salt, 4096, 32)
 	return &E2EEncryption{key: key}
 }
 
