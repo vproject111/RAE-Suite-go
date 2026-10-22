@@ -787,3 +787,19 @@ INSERT INTO trigger_rules (
 -- SELECT cron.schedule('reset-stale-rate-limits', '*/5 * * * *',
 --     'UPDATE trigger_rules SET executions_this_hour = 0, hour_window_start = NOW()
 --      WHERE EXTRACT(EPOCH FROM (NOW() - hour_window_start)) >= 3600');
+
+-- +goose Down
+DROP VIEW IF EXISTS recent_executions_summary CASCADE;
+DROP VIEW IF EXISTS workflow_statistics CASCADE;
+DROP VIEW IF EXISTS trigger_statistics CASCADE;
+DROP TABLE IF EXISTS workflow_step_executions CASCADE;
+DROP TABLE IF EXISTS workflow_executions CASCADE;
+DROP TABLE IF EXISTS action_executions CASCADE;
+DROP TABLE IF EXISTS trigger_rules CASCADE;
+DROP TABLE IF EXISTS workflows CASCADE;
+DROP TYPE IF EXISTS condition_operator CASCADE;
+DROP TYPE IF EXISTS execution_status CASCADE;
+DROP TYPE IF EXISTS trigger_status CASCADE;
+DROP TYPE IF EXISTS action_type CASCADE;
+DROP TYPE IF EXISTS event_type CASCADE;
+

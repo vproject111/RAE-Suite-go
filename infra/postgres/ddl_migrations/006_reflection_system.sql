@@ -423,3 +423,14 @@ COMMENT ON VIEW top_reflections IS 'Top 100 reflections by score, access count, 
 -- ============================================================================
 -- END OF SCHEMA
 -- ============================================================================
+
+-- +goose Down
+DROP VIEW IF EXISTS top_reflections CASCADE;
+DROP VIEW IF EXISTS reflection_statistics CASCADE;
+DROP TABLE IF EXISTS reflection_usage_log CASCADE;
+DROP TABLE IF EXISTS reflection_clusters CASCADE;
+DROP TABLE IF EXISTS reflection_relationships CASCADE;
+DROP TABLE IF EXISTS reflections CASCADE;
+DROP TYPE IF EXISTS reflection_relation_type CASCADE;
+DROP TYPE IF EXISTS reflection_type CASCADE;
+

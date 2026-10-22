@@ -30,3 +30,8 @@ CREATE INDEX idx_kg_edges_relation ON knowledge_graph_edges(relation);
 
 ALTER TABLE knowledge_graph_nodes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE knowledge_graph_edges ENABLE ROW LEVEL SECURITY;
+
+-- +goose Down
+DROP TABLE IF EXISTS knowledge_graph_edges CASCADE;
+DROP TABLE IF EXISTS knowledge_graph_nodes CASCADE;
+

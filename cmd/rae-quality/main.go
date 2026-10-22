@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/security"
 	"github.com/vproject111/RAE-Suite-go/services/quality"
 )
 
@@ -44,6 +45,6 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	svc.RegisterRoutes(mux)
-	log.Printf("RAE-Quality (Go Native v5.3.0) listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, mux))
+	log.Printf("RAE-Quality (Go Native v5.3.2) listening on :%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, security.WrapSecureHandler(mux)))
 }

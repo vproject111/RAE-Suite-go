@@ -306,10 +306,18 @@ func (b *AgnosticStorageBroker) ExportSQL(ctx context.Context) (string, int, err
 	sb.WriteString("CREATE TABLE IF NOT EXISTS governance_outbox (id TEXT PRIMARY KEY, event_type TEXT NOT NULL, payload JSONB NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());\n")
 	for _, sc := range items {
 		m := sc.Memory
-		safeContent := strings.ReplaceAll(m.Content, "'", "''")
-		safeProj := strings.ReplaceAll(m.Project, "'", "''")
-		fmt.Fprintf(&sb, "INSERT INTO memories (id, content, layer, tenant_id, project, info_class, importance, content_hash) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', %.4f, '%s') ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content;\n",
-			m.ID, safeContent, m.Layer, m.TenantID, safeProj, m.InfoClass, m.Importance, m.ContentHash)
+		safeContent := "'" + strings.ReplaceAll(m.Content, "'", "''") + "'"
+		safeProj := "'" + strings.ReplaceAll(m.Project, "'", "''") + "'"
+		safeID := "'" + strings.ReplaceAll(m.ID, "'", "''") + "'"
+		safeLayer := "'" + strings.ReplaceAll(string(m.Layer), "'", "''") + "'"
+		safeTenant := "'" + strings.ReplaceAll(m.TenantID, "'", "''") + "'"
+		safeInfo := "'" + strings.ReplaceAll(string(m.InfoClass), "'", "''") + "'"
+		safeHash := "'" + strings.ReplaceAll(m.ContentHash, "'", "''") + "'"
+		impStr := fmt.Sprintf("%.4f", m.Importance)
+		vals := strings.Join([]string{safeID, safeContent, safeLayer, safeTenant, safeProj, safeInfo, impStr, safeHash}, ", ")
+		sb.WriteString("INSERT INTO memories (id, content, layer, tenant_id, project, info_class, importance, content_hash) VALUES (")
+		sb.WriteString(vals)
+		sb.WriteString(") ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content;\n")
 	}
 	sb.WriteString("COMMIT;\n")
 	return sb.String(), len(items), nil
