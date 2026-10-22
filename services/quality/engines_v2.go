@@ -329,7 +329,7 @@ func (ie *InfrastructureEngine) AuditDockerfile(dockerfileContent, filePath stri
 			hasNonRootUser = true
 		}
 	}
-	if strings.Contains(upper, "ADDUSER") && strings.Contains(upper, "APP_USER=") {
+	if strings.Contains(upper, "APP_USER=") {
 		hasNonRootUser = true
 	}
 

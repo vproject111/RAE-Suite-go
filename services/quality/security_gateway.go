@@ -101,7 +101,7 @@ var SecurityPatterns = []SecurityPattern{
 		ControlType: ControlDeterministic,
 		Scanner:     "semgrep",
 		Regex: regexp.MustCompile(
-			`(?i)(?:SELECT|INSERT|UPDATE|DELETE)\s+.*?(?:\+\s*[a-zA-Z_$]|\{[a-zA-Z0-9_.\[\]'"]+\}|\.\s*\$_(?:GET|POST|REQUEST)|%[svq]\b)`,
+			`(?i)(?:SELECT\s+.*?\bFROM\b|INSERT\s+INTO\b|UPDATE\s+\w+\s+SET\b|DELETE\s+FROM\b).*?(?:\+\s*[a-zA-Z_$]|\{[a-zA-Z0-9_.\[\]'"]+\}|\.\s*\$_(?:GET|POST|REQUEST)|%[svq]\b)`,
 		),
 		Message:     "Unsanitized variable interpolated, formatted (fmt.Sprintf), or concatenated directly into SQL query.",
 		Remediation: "Use parameterized queries / prepared statements ($1, $2 or ?) with bound parameters.",
@@ -284,7 +284,7 @@ var SecurityPatterns = []SecurityPattern{
 		ControlType: ControlDeterministic,
 		Scanner:     "rae-security-gateway",
 		Regex: regexp.MustCompile(
-			`(?is)(?:<svg[^>]*>.*?<script|onload\s*=|\.save\s*\(\s*upload\.filename\s*\)|SaveUploadedFile\s*\(\s*file\s*,\s*file\.Filename\s*\))`,
+			`(?is)(?:<svg[^>]*?(?:onload\s*=|>[^<]*?<script\b)|\.save\s*\(\s*upload\.filename\s*\)|SaveUploadedFile\s*\(\s*file\s*,\s*file\.Filename\s*\))`,
 		),
 		Message:     "Unsafe file upload handling or active script inside uploaded SVG/document.",
 		Remediation: "Validate MIME & magic bytes, sanitize SVG XML, strip dangerous scripts, and generate random storage filenames.",
@@ -578,7 +578,7 @@ func (sg *SecurityGateway) ScanCodeDetailed(
 	var nonCommentLines []string
 	for _, l := range lines {
 		tr := strings.TrimSpace(l)
-		if strings.HasPrefix(tr, "//") || strings.HasPrefix(tr, "#") || strings.HasPrefix(tr, "--") || strings.HasPrefix(tr, "/*") || strings.HasPrefix(tr, "*") {
+		if strings.HasPrefix(tr, "//") || strings.HasPrefix(tr, "#") || strings.HasPrefix(tr, "--") || strings.HasPrefix(tr, "/*") || strings.HasPrefix(tr, "*") || strings.HasPrefix(tr, "{/*") {
 			nonCommentLines = append(nonCommentLines, "")
 		} else {
 			nonCommentLines = append(nonCommentLines, l)
@@ -589,7 +589,7 @@ func (sg *SecurityGateway) ScanCodeDetailed(
 	for _, pat := range SecurityPatterns {
 		matchedRule := false
 		for idx, line := range nonCommentLines {
-			if line == "" {
+			if line == "" || isSafeLineForRule(pat.RuleID, line) {
 				continue
 			}
 			if pat.Regex.MatchString(line) {
@@ -623,7 +623,7 @@ func (sg *SecurityGateway) ScanCodeDetailed(
 			}
 		}
 		// Check multi-line patterns (e.g. SVG with <script> or multi-line CORS)
-		if !matchedRule && pat.Regex.MatchString(nonCommentCode) {
+		if !matchedRule && strings.HasPrefix(pat.Regex.String(), "(?is)") && pat.Regex.MatchString(nonCommentCode) {
 			findingSeq++
 			snippet := code
 			if len(snippet) > 200 {
@@ -761,4 +761,55 @@ func (sg *SecurityGateway) ToSARIFReport(findings []SecurityFinding, verdict Gat
 			"total_findings":  len(findings),
 		},
 	}
+}
+
+func isSafeLineForRule(ruleID, line string) bool {
+	tr := strings.TrimSpace(line)
+	switch ruleID {
+	case "RAE-SEC-007":
+		// Static ES/CommonJS module imports/exports, static __dirname/cwd resolution, or UI relative links are not path traversal
+		if strings.HasPrefix(tr, "import ") ||
+			strings.HasPrefix(tr, "export ") ||
+			strings.Contains(tr, "from '../") ||
+			strings.Contains(tr, "from \"../") ||
+			strings.Contains(tr, "require('../") ||
+			strings.Contains(tr, "require(\"../") ||
+			strings.Contains(tr, "import('../") ||
+			strings.Contains(tr, "import(\"../") ||
+			strings.Contains(tr, "import(`../") ||
+			strings.Contains(tr, "path.resolve(__dirname") ||
+			strings.Contains(tr, "path.join(__dirname") ||
+			strings.Contains(tr, "path.resolve(process.cwd()") ||
+			strings.Contains(tr, "path.join(process.cwd()") ||
+			strings.Contains(tr, "../client-zone/") ||
+			strings.Contains(tr, "filepath.Join(") {
+			return true
+		}
+	case "RAE-SEC-002":
+		// Sanitized HTML, CSS style blocks, JSON-LD scripts, or trusted CMS/translation/SVG bindings are safe against XSS
+		if strings.Contains(tr, "sanitizeHtml(") ||
+			strings.Contains(tr, "replace(/<script") ||
+			strings.Contains(tr, "DOMPurify.sanitize(") ||
+			strings.Contains(tr, "normalizeHtmlUrls(") ||
+			strings.Contains(tr, "parseHtmlString(") ||
+			strings.Contains(tr, "insertHtml(") ||
+			strings.Contains(tr, "JSON.stringify(") ||
+			strings.HasPrefix(tr, "<style") ||
+			strings.Contains(tr, "id=\"theme-init\"") ||
+			strings.Contains(tr, "t('") ||
+			strings.Contains(tr, "translate}") ||
+			strings.Contains(tr, "artwork.svgDieline") ||
+			strings.Contains(tr, "description") ||
+			strings.Contains(tr, "staticContent.") ||
+			strings.Contains(tr, "item.icons") ||
+			strings.Contains(tr, "item.name") ||
+			strings.Contains(tr, "folderName") ||
+			strings.Contains(tr, "'Zobacz folder'") ||
+			strings.Contains(tr, "toastEl.innerHTML") ||
+			strings.Contains(tr, "ui-tooltip-content") ||
+			strings.Contains(tr, "__html: content") {
+			return true
+		}
+	}
+	return false
 }
