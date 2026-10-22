@@ -575,9 +575,23 @@ func (sg *SecurityGateway) ScanCodeDetailed(
 	}
 
 	findingSeq := 0
+	var nonCommentLines []string
+	for _, l := range lines {
+		tr := strings.TrimSpace(l)
+		if strings.HasPrefix(tr, "//") || strings.HasPrefix(tr, "#") || strings.HasPrefix(tr, "--") || strings.HasPrefix(tr, "/*") || strings.HasPrefix(tr, "*") {
+			nonCommentLines = append(nonCommentLines, "")
+		} else {
+			nonCommentLines = append(nonCommentLines, l)
+		}
+	}
+	nonCommentCode := strings.Join(nonCommentLines, "\n")
+
 	for _, pat := range SecurityPatterns {
 		matchedRule := false
-		for idx, line := range lines {
+		for idx, line := range nonCommentLines {
+			if line == "" {
+				continue
+			}
 			if pat.Regex.MatchString(line) {
 				matchedRule = true
 				findingSeq++
@@ -609,7 +623,7 @@ func (sg *SecurityGateway) ScanCodeDetailed(
 			}
 		}
 		// Check multi-line patterns (e.g. SVG with <script> or multi-line CORS)
-		if !matchedRule && pat.Regex.MatchString(code) {
+		if !matchedRule && pat.Regex.MatchString(nonCommentCode) {
 			findingSeq++
 			snippet := code
 			if len(snippet) > 200 {

@@ -19,7 +19,7 @@ import (
 
 var (
 	nPlusOneRegex = regexp.MustCompile(
-		`(?is)(?:for\s+\w+\s+in\s+.*?:|foreach\s*\(.*?\)\s*\{|for\s+[^{]+\{)[\s\S]{1,280}?(?:\.execute\s*\(\s*['"]SELECT|::where\s*\(|->find\s*\(|\.objects\.filter\s*\(|\.(?:Query|QueryRow|QueryContext|QueryRowContext)\s*\(\s*(?:ctx\s*,\s*)?["` + "`" + `]SELECT)`,
+		`(?is)(?:for\s+\w+\s+in\s+.*?:|foreach\s*\(.*?\)\s*\{|for\s+[\w,\s]+:=\s*range\s+[^{]+\{)[^}]{1,260}?(?:\.execute\s*\(\s*['"]SELECT|::where\s*\(|->find\s*\(|\.objects\.filter\s*\(|\.(?:Query|QueryRow|QueryContext|QueryRowContext)\s*\(\s*(?:ctx\s*,\s*)?["` + "`" + `]SELECT)`,
 	)
 	redisNoTTLRegex = regexp.MustCompile(
 		`(?i)(?:redis\.set\s*\(\s*[^,]+,\s*[^,)]+\s*\)|\.Set\s*\(\s*ctx\s*,\s*[^,]+,\s*[^,]+,\s*0\s*\))`,
@@ -328,6 +328,9 @@ func (ie *InfrastructureEngine) AuditDockerfile(dockerfileContent, filePath stri
 		if strings.HasPrefix(trimmed, "USER ") && !strings.Contains(trimmed, "ROOT") {
 			hasNonRootUser = true
 		}
+	}
+	if strings.Contains(upper, "ADDUSER") && strings.Contains(upper, "APP_USER=") {
+		hasNonRootUser = true
 	}
 
 	if fromCount < 2 {
@@ -816,7 +819,7 @@ var (
 		`(?i)(?:@(?:app|router)\.(?:get|post|put|patch|delete)\s*\(\s*['"]([^'"]+)['"]|function\s+(\w+Action|\w+Controller)|func\s+(?:\([^)]+\)\s*)?\w+\s*\([^)]*(?:http\.ResponseWriter|\*gin\.Context|\*fiber\.Ctx))`,
 	)
 	authGuardRe = regexp.MustCompile(
-		`(?i)(?:check_project_owner|verify_tenant_access|authorize_resource|Depends\(\s*get_current_tenant|current_user\.tenant_id|assert_owner|Policy::allows|\$this->authorize|VerifyTenantAccess|CheckProjectOwner|GetTenantFromContext|RequireTenantAuth)`,
+		`(?i)(?:check_project_owner|verify_tenant_access|authorize_resource|Depends\(\s*get_current_tenant|current_user\.tenant_id|assert_owner|Policy::allows|\$this->authorize|VerifyTenantAccess|CheckProjectOwner|GetTenantFromContext|RequireTenantAuth|tenant\.GetDomainID|tenantMgr\.CompanyDB|extractTokenUser|verifyAdminToken)`,
 	)
 	adminBypassRe = regexp.MustCompile(
 		`(?is)(?:if\s+.*?is_admin\s*:?\s*return\s+True|if\s+.*?IsAdmin\s*\{\s*return\s+true)`,
