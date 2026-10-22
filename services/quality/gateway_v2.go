@@ -719,7 +719,7 @@ func (gw *RAEQualityGatewayV2) ScanRepositoryDir(rootDir string) (map[string]int
 		}
 		if fi.IsDir() {
 			base := fi.Name()
-			if base == ".git" || base == "vendor" || base == "node_modules" || base == ".venv" || base == "dist" || base == "build" {
+			if base == ".git" || base == "vendor" || base == "node_modules" || base == ".venv" || base == "dist" || base == "build" || base == ".next" || base == "out" || base == "coverage" || base == "playwright-report" || base == "test-results" || base == ".turbo" {
 				return filepath.SkipDir
 			}
 			return nil
@@ -770,8 +770,18 @@ func (gw *RAEQualityGatewayV2) ScanRepositoryDir(rootDir string) (map[string]int
 			return nil
 		}
 
-		isTestFile := strings.HasSuffix(lowerName, "_test.go") || strings.HasPrefix(lowerName, "test_")
-		isScannerRuleCatalog := strings.HasPrefix(filepath.ToSlash(relPath), "services/quality/") &&
+		slashRel := filepath.ToSlash(relPath)
+		isTestFile := strings.HasSuffix(lowerName, "_test.go") ||
+			strings.HasPrefix(lowerName, "test_") ||
+			strings.HasSuffix(lowerName, ".test.ts") ||
+			strings.HasSuffix(lowerName, ".test.tsx") ||
+			strings.HasSuffix(lowerName, ".spec.ts") ||
+			strings.HasSuffix(lowerName, ".spec.tsx") ||
+			strings.HasSuffix(lowerName, ".test.js") ||
+			strings.HasSuffix(lowerName, ".spec.js") ||
+			strings.Contains(slashRel, "__tests__/") ||
+			strings.HasPrefix(slashRel, "e2e/")
+		isScannerRuleCatalog := strings.HasPrefix(slashRel, "services/quality/") &&
 			(lowerName == "security_gateway.go" || lowerName == "engines_v2.go" || lowerName == "service.go")
 		if ext == ".go" {
 			goFilesCount++
