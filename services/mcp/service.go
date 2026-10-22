@@ -355,7 +355,19 @@ func (s *Service) CallTool(ctx context.Context, name string, args map[string]int
 		}, nil
 
 	case "rae_quality_rpc":
-		action := strArg("action", "audit")
+		action := strArg("operation", strArg("action", "audit"))
+		if strings.HasPrefix(action, "quality.") || strings.HasPrefix(action, "quality_") {
+			params, _ := args["params"].(map[string]interface{})
+			if params == nil {
+				params = args
+			}
+			res, err := s.qualitySvc.GatewayV2.DispatchRPC(action, params)
+			if err == nil {
+				res["action"] = action
+				res["sarif_version"] = "2.1.0"
+				return res, nil
+			}
+		}
 		code := strArg("code", "package main\nfunc main() {}\n")
 		rep := s.qualitySvc.AuditCode(code, sliceStringArg(args, "changed_files"), strArg("prompt", ""))
 		return map[string]interface{}{
@@ -664,6 +676,9 @@ func (s *Service) CallTool(ctx context.Context, name string, args map[string]int
 		}, nil
 
 	default:
+		if res, err := s.qualitySvc.CallQualityMCPTool(name, args); err == nil {
+			return res, nil
+		}
 		return nil, fmt.Errorf("unknown MCP tool: %s", name)
 	}
 }
