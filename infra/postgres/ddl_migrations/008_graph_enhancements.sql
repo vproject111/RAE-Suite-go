@@ -768,3 +768,10 @@ COMMENT ON VIEW top_connected_nodes IS 'Top 100 most connected nodes by degree';
 -- ============================================================================
 -- END OF GRAPH ENHANCEMENTS SCHEMA
 -- ============================================================================
+
+-- +goose Down
+DROP VIEW IF EXISTS top_connected_nodes CASCADE;
+DROP VIEW IF EXISTS knowledge_graph_statistics CASCADE;
+DROP TABLE IF EXISTS knowledge_graph_traversals CASCADE;
+DROP TABLE IF EXISTS knowledge_graph_snapshots CASCADE;
+

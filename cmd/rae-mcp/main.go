@@ -36,6 +36,6 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	mcpSvc.RegisterRoutes(mux)
-	log.Printf("RAE-MCP Unified Server (Go Native v5.3.0) listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, mux))
+	log.Printf("RAE-MCP Unified Server (Go Native v5.3.2) listening on :%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, security.WrapSecureHandler(mux)))
 }

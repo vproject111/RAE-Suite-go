@@ -24,3 +24,6 @@ CREATE TABLE memories (
   usage_count INTEGER DEFAULT 0,
   project VARCHAR(255) -- project/namespace for memory isolation
 );
+
+-- +goose Down
+DROP TABLE IF EXISTS memories CASCADE;

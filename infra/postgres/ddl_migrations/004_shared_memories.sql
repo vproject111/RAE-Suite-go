@@ -8,3 +8,7 @@ CREATE TABLE shared_memories (
 
 -- Przykładowa polityka (SELECT) — do dostosowania wraz z resztą
 -- CREATE POLICY tenant_and_shared_isolation ON memories ... (zdefiniuj wg potrzeb w migracji)
+
+-- +goose Down
+DROP TABLE IF EXISTS shared_memories CASCADE;
+

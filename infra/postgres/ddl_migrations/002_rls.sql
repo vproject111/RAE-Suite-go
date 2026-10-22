@@ -7,3 +7,8 @@ ALTER TABLE memories ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation_memories ON memories
   USING (tenant_id = current_setting('app.current_tenant_id', true))
   WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true));
+
+-- +goose Down
+DROP POLICY IF EXISTS tenant_isolation_memories ON memories;
+ALTER TABLE memories DISABLE ROW LEVEL SECURITY;
+
