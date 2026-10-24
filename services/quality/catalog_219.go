@@ -590,3 +590,57 @@ func BuildFullRuleCatalog() map[string]QualityRule {
 
 	return catalog
 }
+
+// OBS001ObservabilityRule returns the canonical OBS-001 (Observability & Trace Propagation Gate) quality rule definition.
+func OBS001ObservabilityRule() QualityRule {
+	return QualityRule{
+		ID:          "OBS-001",
+		Version:     "1.0.0",
+		TopicNumber: 138,
+		Name:        "Observability & Trace Propagation Gate (W3C traceparent, Canonical slog JSON, Zero PII Leak)",
+		Category:    "observability_monitoring",
+		Module:      "Observability & Monitoring",
+		Priority:    PriorityP0,
+		Severity:    SeverityCritical,
+		Enforcement: EnforcementBlock,
+		ControlType: ControlDeterministic,
+		Stage:       StagePreMerge,
+		AppliesTo: RuleAppliesTo{
+			Languages:    []string{"go"},
+			Components:   []string{"api", "backend", "frontend", "editor", "manager", "rae-suite"},
+			Technologies: []string{"opentelemetry", "slog"},
+		},
+		Triggers: []string{"observability_monitoring_changed", "http_middleware_changed"},
+		Verification: RuleVerification{
+			StaticAnalysis:  true,
+			AIReview:        true,
+			IntegrationTest: true,
+			NegativeTest:    true,
+		},
+		Requirements: []string{
+			"Zero fmt.Println or log.Printf in HTTP handlers/services outside CLI tools",
+			"Outgoing HTTP requests must propagate W3C traceparent header",
+			"All logs must be single-line canonical JSON with PII redaction",
+		},
+		EvidenceRequired: []string{"source_location", "test_result", "trace_waterfall"},
+		Autofix:          AutofixSpec{Enabled: true, RequireRevalidation: true, MaxAttempts: 3},
+		Scanner:          "rae-quality-obs001-gate",
+	}
+}
+
+// VerifyOBS001ObservabilityGate evaluates Go source snippets, HTTP headers, and emitted log lines against OBS-001.
+func VerifyOBS001ObservabilityGate(goCode string, isCLI bool, traceparentHeader string, sampleLogJSON string) (bool, []string) {
+	var violations []string
+	if !isCLI {
+		if strings.Contains(goCode, "fmt.Println(") || strings.Contains(goCode, "log.Printf(") {
+			violations = append(violations, "OBS-001: forbidden fmt.Println/log.Printf in non-CLI service code")
+		}
+	}
+	if !strings.HasPrefix(strings.TrimSpace(traceparentHeader), "00-") || len(strings.TrimSpace(traceparentHeader)) != 55 {
+		violations = append(violations, "OBS-001: missing or invalid W3C traceparent header")
+	}
+	if strings.Contains(sampleLogJSON, "Bearer eyJ") || strings.Contains(sampleLogJSON, "password\":\"secret") {
+		violations = append(violations, "OBS-001: unmasked PII or secret token detected in log output")
+	}
+	return len(violations) == 0, violations
+}
