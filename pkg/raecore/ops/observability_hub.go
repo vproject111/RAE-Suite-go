@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	defaultHubCapacity    = 2000
+	defaultHubCapacity    = 500
 	maxPersistFileBytes   = 10 * 1024 * 1024
 	federationTimeout     = 750 * time.Millisecond
 	federationHeader      = "X-Internal-Federation"
@@ -242,15 +242,14 @@ func GlobalObservabilityHub() *ObservabilityHub {
 }
 
 func resolveDefaultPersistPath(service string) string {
-	if p := strings.TrimSpace(os.Getenv("LOG_PERSIST_PATH")); p != "" {
-		return p
+	p := strings.TrimSpace(os.Getenv("LOG_PERSIST_PATH"))
+	if p == "" || strings.EqualFold(p, "off") || strings.EqualFold(p, "none") || strings.EqualFold(p, "false") || strings.EqualFold(p, "stdout") {
+		_ = os.Remove(filepath.Join("/var/www/app/data/logs", service+".jsonl"))
+		_ = os.Remove(filepath.Join("/var/www/app/data/logs", service+".jsonl.1"))
+		_ = os.Remove(filepath.Join(os.TempDir(), "dreamsoft-obs-"+service+".jsonl"))
+		return ""
 	}
-	if st, err := os.Stat("/var/www/app/data"); err == nil && st.IsDir() {
-		dir := "/var/www/app/data/logs"
-		_ = os.MkdirAll(dir, 0o750)
-		return filepath.Join(dir, service+".jsonl")
-	}
-	return filepath.Join(os.TempDir(), "dreamsoft-obs-"+service+".jsonl")
+	return p
 }
 
 // NewObservabilityHub creates a new ObservabilityHub with optional disk persistence.
@@ -258,11 +257,17 @@ func NewObservabilityHub(serviceName, persistPath string) *ObservabilityHub {
 	if serviceName == "" {
 		serviceName = "rae-suite"
 	}
+	capSize := defaultHubCapacity
+	if rawCap := strings.TrimSpace(os.Getenv("OBS_RING_BUFFER_SIZE")); rawCap != "" {
+		if parsed, err := strconv.Atoi(rawCap); err == nil && parsed >= 0 && parsed <= 10000 {
+			capSize = parsed
+		}
+	}
 	h := &ObservabilityHub{
-		entries:     make([]map[string]any, 0, defaultHubCapacity),
-		seenKeys:    make(map[string]bool, defaultHubCapacity),
+		entries:     make([]map[string]any, 0, capSize),
+		seenKeys:    make(map[string]bool, capSize),
 		alerts:      make(map[string]*AlertRecord),
-		capacity:    defaultHubCapacity,
+		capacity:    capSize,
 		startedAt:   time.Now().UTC(),
 		serviceName: serviceName,
 		persistPath: persistPath,
@@ -440,6 +445,7 @@ func normalizeHTTPAndCategoryFields(out map[string]any, msg, lvl string) {
 		out["status"] = status
 		out["http_status"] = status
 		out["status_code"] = status
+		out["status_label"] = describeHTTPStatusLabel(status)
 	}
 	if bytesVal >= 0 && (method != "" || status > 0) {
 		out["bytes"] = bytesVal
@@ -461,7 +467,7 @@ func normalizeHTTPAndCategoryFields(out map[string]any, msg, lvl string) {
 		out["event"] = ev
 	}
 
-	if status >= 400 || lvl == "ERROR" {
+	if status >= 400 || lvl == "ERROR" || lvl == "WARN" {
 		populateErrorClassification(out, status)
 	}
 }
@@ -499,8 +505,144 @@ func inferCanonicalEvent(cat string, status int, lvl, msg string) string {
 	return msg
 }
 
+func describeHTTPStatusLabel(status int) string {
+	switch status {
+	case 200:
+		return "200 OK (Sukces)"
+	case 201:
+		return "201 Created (Utworzono)"
+	case 204:
+		return "204 No Content (Brak treści)"
+	case 301, 302, 307, 308:
+		return strconv.Itoa(status) + " Redirect (Przekierowanie)"
+	case 304:
+		return "304 Not Modified (Z pamięci podręcznej)"
+	case 400:
+		return "400 Bad Request (Nieprawidłowe parametry żądania)"
+	case 401:
+		return "401 Unauthorized (Brak ważnego tokenu JWT/Keycloak)"
+	case 403:
+		return "403 Forbidden (Brak uprawnień roli do zasobu)"
+	case 404:
+		return "404 Not Found (Zasób lub plik nie istnieje)"
+	case 405:
+		return "405 Method Not Allowed (Niedozwolona metoda HTTP)"
+	case 409:
+		return "409 Conflict (Konflikt stanu zasobu)"
+	case 422:
+		return "422 Unprocessable Entity (Błąd walidacji danych formularza)"
+	case 429:
+		return "429 Too Many Requests (Przekroczony limit zapytań)"
+	case 500:
+		return "500 Internal Server Error (Wewnętrzny błąd serwera)"
+	case 502:
+		return "502 Bad Gateway (Błąd bramy / usługi nadrzędnej)"
+	case 503:
+		return "503 Service Unavailable (Usługa chwilowo niedostępna)"
+	case 504:
+		return "504 Gateway Timeout (Przekroczono czas oczekiwania na usługę)"
+	default:
+		if status >= 500 {
+			return strconv.Itoa(status) + " Błąd serwera (5xx)"
+		}
+		if status >= 400 {
+			return strconv.Itoa(status) + " Błąd żądania klienta (4xx)"
+		}
+		if status >= 200 && status < 300 {
+			return strconv.Itoa(status) + " OK"
+		}
+		return strconv.Itoa(status)
+	}
+}
+
+func describeErrorCodePolish(code string) string {
+	switch code {
+	case "RESOURCE_NOT_FOUND":
+		return "Brak zasobu lub pliku (HTTP 404)"
+	case "VALIDATION_FAILED":
+		return "Błąd walidacji danych wejściowych (HTTP 400/422)"
+	case "AUTH_FORBIDDEN":
+		return "Brak autoryzacji lub uprawnień roli (HTTP 401/403)"
+	case "METHOD_NOT_ALLOWED":
+		return "Niedozwolona metoda HTTP (HTTP 405)"
+	case "CONFLICT":
+		return "Konflikt stanu danych (HTTP 409)"
+	case "RATE_LIMITED":
+		return "Przekroczony limit zapytań (HTTP 429)"
+	case "UPSTREAM_UNAVAILABLE":
+		return "Niedostępna usługa zależna / baza (HTTP 502/503/504)"
+	case "INTERNAL_ERROR":
+		return "Błąd wewnętrzny serwera (HTTP 500)"
+	case "ERR_INTERNAL_PANIC":
+		return "Krytyczny wyjątek PANIC w procesie Go"
+	case "SYNTHETIC_TEST_ALERT":
+		return "Symulowany alert testowy z Operations Center"
+	default:
+		return "Błąd wykonania operacji (" + code + ")"
+	}
+}
+
+func buildHumanErrorDescription(out map[string]any, status int) string {
+	method := firstString(out, "method", "http_method")
+	path := firstString(out, "path", "http_path", "route", "http_route")
+	detail := firstString(out, "error_detail", "error", "reason")
+	msg := firstString(out, "msg", "message")
+	target := strings.TrimSpace(method + " " + path)
+	if target == "" {
+		target = path
+	}
+
+	var base string
+	switch {
+	case status == 404:
+		switch {
+		case strings.Contains(path, "/uploaded-icons/"):
+			base = "Brak ikony w bazie blobów (ps_uploaded_file_blobs) dla podanego identyfikatora pliku (" + path + "). Odpytano nieistniejący rekord ikony."
+		case strings.Contains(path, "/layout/theme/active"):
+			base = "Brak zdefiniowanego niestandardowego motywu kolorystycznego dla domeny (" + path + ") — frontend korzysta z domyślnego motywu."
+		case strings.Contains(path, "/ps_config_related_increases"):
+			base = "Brak skonfigurowanych powiązanych przyrostów dla wybranego atrybutu/opcji (" + path + ")."
+		case strings.Contains(path, "/efficiency/") || strings.Contains(path, "/speedChanges"):
+			base = "Brak zdefiniowanych krzywych wydajności/prędkości dla wybranej opcji (" + path + ")."
+		case strings.Contains(path, "/ps_pages/oneByUrl/") || strings.Contains(path, "/ps_groups/getOneForView/") || strings.Contains(path, "/types/oneForView/"):
+			base = "Sprawdzenie przyjaznego adresu URL w katalogu (" + path + ") — brak dopasowania w tej tabeli, router sprawdza kolejny typ encji."
+		case strings.Contains(path, "/session/properties"):
+			base = "Brak właściwości sesji dla niezalogowanego użytkownika (" + path + ")."
+		default:
+			base = "Żądany zasób, plik lub endpoint nie istnieje na serwerze (HTTP 404 Not Found: " + target + ")."
+		}
+	case status == 401:
+		base = "Odrzucono dostęp — brak tokenu logowania lub wygasła sesja Keycloak SSO / Manager JWT (HTTP 401 Unauthorized na " + target + ")."
+	case status == 403:
+		base = "Odmowa dostępu — zalogowany użytkownik nie posiada wymaganych uprawnień roli lub dostęp między-tenantowy został zablokowany (HTTP 403 Forbidden na " + target + ")."
+	case status == 405:
+		base = "Endpoint nie obsługuje wywołanej metody HTTP (HTTP 405 Method Not Allowed: " + target + ")."
+	case status == 409:
+		base = "Operacja przerwana z powodu konfliktu stanu danych lub duplikatu rekordu (HTTP 409 Conflict: " + target + ")."
+	case status == 429:
+		base = "Przekroczono dozwolony limit zapytań z tego adresu IP lub klienta (HTTP 429 Rate Limit: " + target + ")."
+	case status >= 400 && status < 500:
+		base = "Błąd walidacji danych wejściowych lub brak wymaganego parametru w żądaniu klienta (HTTP " + strconv.Itoa(status) + " na " + target + ")."
+	case status == 502 || status == 503 || status == 504:
+		base = "Usługa zależna (baza danych lub mikroserwis powiązany) jest niedostępna lub przekroczyła limit czasu odpowiedzi (HTTP " + strconv.Itoa(status) + " na " + target + ")."
+	case status >= 500:
+		base = "Wewnętrzny błąd serwera podczas przetwarzania żądania w handlerze Go (HTTP " + strconv.Itoa(status) + " na " + target + ")."
+	default:
+		if msg != "" && msg != "http_request" && msg != "HTTP request completed" {
+			base = "Zdarzenie ostrzegawcze / błąd aplikacji: " + msg
+		} else {
+			base = "Zdarzenie wymaga weryfikacji: " + target
+		}
+	}
+
+	if detail != "" && !strings.Contains(base, detail) {
+		base += " [Szczegóły: " + detail + "]"
+	}
+	return base
+}
+
 func populateErrorClassification(out map[string]any, status int) {
-	if firstString(out, "error_code") == "" {
+	if firstString(out, "error_code") == "" && status >= 400 {
 		switch {
 		case status == 502 || status == 503 || status == 504:
 			out["error_code"] = "UPSTREAM_UNAVAILABLE"
@@ -508,15 +650,21 @@ func populateErrorClassification(out map[string]any, status int) {
 			out["error_code"] = "INTERNAL_ERROR"
 		case status == 401 || status == 403:
 			out["error_code"] = "AUTH_FORBIDDEN"
+		case status == 404:
+			out["error_code"] = "RESOURCE_NOT_FOUND"
+		case status == 405:
+			out["error_code"] = "METHOD_NOT_ALLOWED"
+		case status == 409:
+			out["error_code"] = "CONFLICT"
 		case status == 429:
 			out["error_code"] = "RATE_LIMITED"
 		case status >= 400:
 			out["error_code"] = "VALIDATION_FAILED"
-		default:
-			out["error_code"] = "APPLICATION_ERROR"
 		}
+	} else if firstString(out, "error_code") == "" && firstString(out, "level") == "ERROR" {
+		out["error_code"] = "APPLICATION_ERROR"
 	}
-	if firstString(out, "error_type") == "" {
+	if firstString(out, "error_type") == "" && (status >= 400 || firstString(out, "level") == "ERROR") {
 		switch {
 		case status == 502 || status == 503 || status == 504:
 			out["error_type"] = "upstream"
@@ -524,12 +672,70 @@ func populateErrorClassification(out map[string]any, status int) {
 			out["error_type"] = "internal"
 		case status == 401 || status == 403:
 			out["error_type"] = "auth"
+		case status == 404:
+			out["error_type"] = "not_found"
+		case status == 405:
+			out["error_type"] = "client_error"
+		case status == 409:
+			out["error_type"] = "conflict"
+		case status == 429:
+			out["error_type"] = "rate_limit"
 		case status >= 400:
 			out["error_type"] = "validation"
 		default:
 			out["error_type"] = "internal"
 		}
 	}
+	if ec := firstString(out, "error_code"); ec != "" {
+		out["error_code_label"] = describeErrorCodePolish(ec)
+	}
+	if firstString(out, "error_description") == "" {
+		out["error_description"] = buildHumanErrorDescription(out, status)
+	}
+}
+
+// ExtractErrorDetailFromBody extracts a concise error message from an HTTP error response body (JSON or plain text).
+func ExtractErrorDetailFromBody(raw []byte) string {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return ""
+	}
+	if trimmed[0] == '{' {
+		var m map[string]any
+		if json.Unmarshal(trimmed, &m) == nil {
+			if d := firstString(m, "error", "message", "info", "reason", "detail"); d != "" {
+				if r := firstString(m, "reason"); r != "" && r != d && !strings.Contains(d, r) {
+					return d + " (" + r + ")"
+				}
+				return d
+			}
+		}
+	}
+	s := strings.TrimSpace(string(trimmed))
+	if strings.HasPrefix(strings.ToLower(s), "<!doctype") || strings.HasPrefix(strings.ToLower(s), "<html") {
+		return ""
+	}
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > 160 {
+		s = s[:160]
+	}
+	return s
+}
+
+// BuildHTTPDiagnosticFields computes status_label, error_code, error_code_label, error_type, and error_description for an HTTP response.
+func BuildHTTPDiagnosticFields(method, path string, status int, respBody []byte) (statusLabel, errCode, errCodeLabel, errType, errDesc string) {
+	statusLabel = describeHTTPStatusLabel(status)
+	if status < 400 {
+		return statusLabel, "", "", "", ""
+	}
+	tmp := map[string]any{
+		"method":       method,
+		"path":         path,
+		"status":       status,
+		"error_detail": ExtractErrorDetailFromBody(respBody),
+	}
+	populateErrorClassification(tmp, status)
+	return statusLabel, firstString(tmp, "error_code"), firstString(tmp, "error_code_label"), firstString(tmp, "error_type"), firstString(tmp, "error_description")
 }
 
 func stripPortFromIP(addr string) string {
@@ -645,7 +851,7 @@ func (h *ObservabilityHub) IngestEntry(entry map[string]any) {
 	if len(entry) == 0 {
 		return
 	}
-	norm := NormalizeLogRecord(entry, h.serviceName, "production", "5.3.7")
+	norm := NormalizeLogRecord(entry, h.serviceName, "production", "5.3.8")
 	h.storeNormalizedEntry(norm, true)
 }
 
@@ -665,13 +871,17 @@ func (h *ObservabilityHub) storeNormalizedEntry(norm map[string]any, persist boo
 		h.mu.Unlock()
 		return
 	}
-	h.seenKeys[key] = true
-	if len(h.entries) >= h.capacity {
-		oldestKey := entryDedupKey(h.entries[0])
-		delete(h.seenKeys, oldestKey)
-		h.entries = h.entries[1:]
+	if h.capacity > 0 {
+		h.seenKeys[key] = true
+		if len(h.entries) >= h.capacity {
+			oldestKey := entryDedupKey(h.entries[0])
+			delete(h.seenKeys, oldestKey)
+			copy(h.entries, h.entries[1:])
+			h.entries[len(h.entries)-1] = norm
+		} else {
+			h.entries = append(h.entries, norm)
+		}
 	}
-	h.entries = append(h.entries, norm)
 	h.evaluateAlertsLocked(norm)
 	persistPath := h.persistPath
 	sinkURL := h.sinkURL
@@ -721,7 +931,7 @@ func (h *ObservabilityHub) loadPersistedEntries() {
 		}
 		var parsed map[string]any
 		if json.Unmarshal(trimmed, &parsed) == nil {
-			norm := NormalizeLogRecord(parsed, h.serviceName, "production", "5.3.7")
+			norm := NormalizeLogRecord(parsed, h.serviceName, "production", "5.3.8")
 			h.storeNormalizedEntry(norm, false)
 		}
 	}
@@ -903,7 +1113,7 @@ func (h *ObservabilityHub) TriggerTestAlert(service, companyID string) AlertReco
 		"time":         time.Now().UTC().Format(time.RFC3339Nano),
 		"level":        "ERROR",
 		"service":      service,
-		"version":      "5.3.7",
+		"version":      "5.3.8",
 		"env":          "production",
 		"cluster":      defaultClusterNameRAE,
 		"log_category": "access",
@@ -1019,6 +1229,10 @@ func matchesStatusClass(status int, statusClass string) bool {
 		return true
 	case "2xx":
 		return status >= 200 && status < 300
+	case "4xx_err", "4xx_client", "auth_val":
+		return status >= 400 && status < 500 && status != 404
+	case "404":
+		return status == 404
 	case "4xx":
 		return status >= 400 && status < 500
 	case "5xx":
@@ -1138,7 +1352,7 @@ func computeSection1Services(entries []map[string]any, localService string) []Se
 		stats[localService] = &ServiceStatusSummary{
 			Service:        localService,
 			Status:         "UP",
-			Version:        "5.3.7",
+			Version:        "5.3.8",
 			SuccessRatePct: 100.0,
 		}
 		known = append(known, localService)
@@ -1364,6 +1578,10 @@ func (h *ObservabilityHub) computeSection5RuntimeHealth() RuntimeHealthSummary {
 	bufLen := len(h.entries)
 	pPath := h.persistPath
 	h.mu.RUnlock()
+
+	if pPath == "" {
+		pPath = "stdout (12-Factor JSONL — zero zapisu na dysk poda)"
+	}
 
 	return RuntimeHealthSummary{
 		Service:      h.serviceName,
@@ -1656,7 +1874,8 @@ func requireObservabilityAuth(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func shouldServeHTMLUI(r *http.Request) bool {
-	if r.URL.Query().Get("format") == "json" || r.Header.Get(federationHeader) != "" || r.Header.Get("X-Requested-With") != "" {
+	f := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
+	if f == "json" || f == "ndjson" || f == "jsonl" || f == "raw" || r.Header.Get(federationHeader) != "" || r.Header.Get("X-Requested-With") != "" {
 		return false
 	}
 	return strings.Contains(strings.ToLower(r.Header.Get("Accept")), "text/html")
@@ -1737,6 +1956,16 @@ func parseLogQueryFilterFromRequest(r *http.Request) (LogQueryFilter, bool) {
 func handleLogsQueryJSON(w http.ResponseWriter, r *http.Request, hub *ObservabilityHub) {
 	filter, federate := parseLogQueryFilterFromRequest(r)
 	report := hub.BuildDashboardReport(r.Context(), filter, federate)
+	f := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
+	if f == "ndjson" || f == "jsonl" || f == "raw" {
+		w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		enc := json.NewEncoder(w)
+		for _, entry := range report.Entries {
+			_ = enc.Encode(entry)
+		}
+		return
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(report)
@@ -1747,7 +1976,7 @@ func handleLogsIngestJSON(w http.ResponseWriter, r *http.Request, hub *Observabi
 		defer func() { _ = r.Body.Close() }()
 		body, err := io.ReadAll(io.LimitReader(r.Body, 2*1024*1024))
 		if err == nil && len(body) > 0 {
-			hub.IngestRawBytes(body, hub.serviceName, "production", "5.3.7")
+			hub.IngestRawBytes(body, hub.serviceName, "production", "5.3.8")
 		}
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -1822,8 +2051,10 @@ button.danger{background:#b91c1c;border-color:#dc2626}
 .badge.WARN,.badge.WARNING{background:rgba(245,158,11,0.2);color:#fbbf24}
 .badge.ERROR,.badge.CRITICAL,.badge.DEGRADED{background:rgba(239,68,68,0.25);color:#f87171}
 table{width:100%;border-collapse:collapse;font-size:12px}
-th,td{text-align:left;padding:0.4rem 0.5rem;border-bottom:1px solid rgba(51,65,85,0.6);vertical-align:top}
+th,td{text-align:left;padding:0.45rem 0.5rem;border-bottom:1px solid rgba(51,65,85,0.6);vertical-align:top}
 th{color:var(--muted);font-weight:600}
+tr.log-row{cursor:pointer;transition:background 0.12s}
+tr.log-row:hover{background:rgba(56,189,248,0.08)}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
 .trace-link{color:var(--accent);cursor:pointer;text-decoration:underline}
 .waterfall-row{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem}
@@ -1831,17 +2062,20 @@ th{color:var(--muted);font-weight:600}
 .wf-track{flex:1;background:#0f172a;height:18px;border-radius:4px;position:relative;overflow:hidden}
 .wf-bar{height:100%;background:linear-gradient(90deg,#0284c7,#38bdf8);border-radius:4px;min-width:6px}
 .wf-bar.err{background:linear-gradient(90deg,#dc2626,#ef4444)}
+.err-desc{margin-top:0.2rem;color:#e2e8f0;line-height:1.35}
+.err-sub{color:var(--muted);font-size:11px;margin-top:0.15rem}
 </style>
 </head>
 <body>
 <header>
   <div>
     <h1>Dreamsoft &amp; RAE Operations Center (Go Native Observability &amp; W3C OpenTelemetry)</h1>
-    <div style="color:var(--muted);font-size:12px">5-Sekcyjny Dashboard Administracyjny · Kanoniczny slog JSON · Alerty DS-ALERT-01..06 · Oś Czasu Trace Waterfall</div>
+    <div style="color:var(--muted);font-size:12px">Strumień 12-Factor JSON na stdout · Diagnostyka i opisy błędów po polsku · Alerty DS-ALERT-01..06 · Oś Czasu Trace Waterfall</div>
   </div>
-  <div style="display:flex;gap:0.5rem;align-items:center">
+  <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
     <span id="auth-status-badge" class="badge INFO">Keycloak / Manager JWT</span>
     <span id="last-updated" style="color:var(--muted)"></span>
+    <button onclick="openRawNDJSONStream()" class="secondary" title="Otwórz czysty strumień JSON Lines identyczny z kubectl logs (stdout)">Surowy strumień JSONL (stdout)</button>
     <button onclick="triggerTestAlert()" class="danger">Symuluj Alert 5xx (DS-ALERT-01)</button>
     <button onclick="ackAllAlerts()" class="secondary">Potwierdź Alerty</button>
     <button onclick="loadDashboard()">Odśwież teraz</button>
@@ -1891,31 +2125,33 @@ th{color:var(--muted);font-weight:600}
   <label>Kategoria:
     <select id="f-category" onchange="loadDashboard()">
       <option value="ALL">Wszystkie (access/app/audit/infra)</option>
-      <option value="access">access (HTTP)</option>
-      <option value="application">application</option>
-      <option value="audit">audit (ISO 27001)</option>
-      <option value="infrastructure">infrastructure</option>
+      <option value="access">access (Żądania HTTP)</option>
+      <option value="application">application (Logika biznesowa)</option>
+      <option value="audit">audit (Bezpieczeństwo ISO 27001)</option>
+      <option value="infrastructure">infrastructure (Sondy i start)</option>
     </select>
   </label>
   <label>Poziom:
     <select id="f-level" onchange="loadDashboard()">
-      <option value="ALL">Wszystkie</option>
-      <option value="ERROR">ERROR</option>
-      <option value="WARN">WARN</option>
-      <option value="INFO">INFO</option>
-      <option value="DEBUG">DEBUG</option>
+      <option value="ALL">Wszystkie poziomy</option>
+      <option value="ERROR">ERROR (Błędy krytyczne i 5xx)</option>
+      <option value="WARN">WARN (Ostrzeżenia i 4xx)</option>
+      <option value="INFO">INFO (Poprawne operacje)</option>
+      <option value="DEBUG">DEBUG (Diagnostyka)</option>
     </select>
   </label>
   <label>Status HTTP:
     <select id="f-status" onchange="loadDashboard()">
-      <option value="ALL">Wszystkie</option>
-      <option value="5xx">5xx (Błędy serwera)</option>
-      <option value="4xx">4xx (Błędy klienta/Auth)</option>
-      <option value="2xx">2xx (OK)</option>
+      <option value="ALL">Wszystkie statusy</option>
+      <option value="5xx">5xx — Błędy serwera / awarie (500–504)</option>
+      <option value="4xx_err">400/401/403/422 — Błędy walidacji i Auth (bez 404)</option>
+      <option value="404">404 — Brak zasobu / pliku (Not Found)</option>
+      <option value="4xx">Wszystkie 4xx (400–499 łącznie z 404)</option>
+      <option value="2xx">2xx — Poprawne odpowiedzi (200 OK)</option>
     </select>
   </label>
   <input id="f-trace" placeholder="Filtruj po trace_id..." style="width:190px" oninput="loadDashboard()"/>
-  <input id="f-q" placeholder="Szukaj w JSON (np. calculatePublic, order)..." style="width:220px" oninput="loadDashboard()"/>
+  <input id="f-q" placeholder="Szukaj w opisie lub JSON (np. calculatePublic)..." style="width:220px" oninput="loadDashboard()"/>
   <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="f-live" checked/> Live (3s)</label>
 </div>
 
@@ -1931,7 +2167,7 @@ th{color:var(--muted);font-weight:600}
     <h2><span>2. Aktywne Alerty (DS-ALERT-01..06) i Top Trasy z Błędami 5xx</span><span id="alert-badge" class="badge ok">0 ALERTÓW</span></h2>
     <div id="alerts-box" style="margin-bottom:0.75rem"></div>
     <table>
-      <thead><tr><th>Usługa</th><th>Wzorzec Route</th><th>Żądania</th><th>5xx</th><th>Kod Błędu</th><th>Przykładowy Trace</th></tr></thead>
+      <thead><tr><th>Usługa</th><th>Wzorzec Route</th><th>Żądania</th><th>Błędy 5xx</th><th>Opis / Kod Błędu</th><th>Przykładowy Trace</th></tr></thead>
       <tbody id="sec2-routes"></tbody>
     </table>
   </div>
@@ -1959,17 +2195,24 @@ th{color:var(--muted);font-weight:600}
   </div>
 </div>
 
+<!-- Karta Diagnostyczna Wybranego Wpisu -->
+<div id="log-detail-box" class="card" style="display:none;margin-bottom:1rem;border-color:var(--accent)">
+  <h2><span id="detail-title">Szczegółowa Diagnoza Zdarzenia / Błędu</span><button class="secondary" onclick="document.getElementById('log-detail-box').style.display='none'">Zamknij szczegółowy opis</button></h2>
+  <div id="detail-body"></div>
+</div>
+
 <!-- Strumień Logów Strukturalnych JSON -->
 <div class="card">
-  <h2><span>Strumień Logów Strukturalnych (log/slog JSON)</span><span id="logs-count" style="color:var(--muted)"></span></h2>
+  <h2><span>Strumień Logów Strukturalnych (log/slog JSON na stdout — kliknij wiersz, aby zobaczyć pełną diagnozę i komendę kubectl)</span><span id="logs-count" style="color:var(--muted)"></span></h2>
   <table>
-    <thead><tr><th>Czas (UTC)</th><th>Poziom</th><th>Usługa</th><th>Kategoria</th><th>Metoda / Route (Path)</th><th>Status</th><th>Czas (ms)</th><th>Komunikat (msg / event)</th><th>Trace ID (Korelacja)</th></tr></thead>
+    <thead><tr><th>Czas (UTC)</th><th>Poziom i znaczenie</th><th>Usługa</th><th>Kategoria</th><th>Metoda / Endpoint (Path)</th><th>Status HTTP i znaczenie</th><th>Czas (ms)</th><th>Pełny opis zdarzenia / przyczyna błędu</th><th>Trace ID (Korelacja)</th></tr></thead>
     <tbody id="logs-tbody"></tbody>
   </table>
 </div>
 
 <script>
 const apiBase = window.location.pathname.startsWith('/api/') ? '/api/_meta' : '/_meta';
+let currentEntries = [];
 
 function getRootCookieDomain() {
   const h = window.location.hostname;
@@ -2054,6 +2297,19 @@ function redirectToKeycloakManagerLogin() {
   }
 }
 
+function openRawNDJSONStream() {
+  const params = new URLSearchParams({
+    format: 'ndjson',
+    service: document.getElementById('f-service').value,
+    level: document.getElementById('f-level').value,
+    status: document.getElementById('f-status').value,
+    trace_id: document.getElementById('f-trace').value,
+    q: document.getElementById('f-q').value,
+    limit: '500'
+  });
+  window.open(apiBase + '/logs?' + params.toString(), '_blank');
+}
+
 async function obsFetch(url, opts) {
   const options = Object.assign({
     credentials: 'include',
@@ -2102,6 +2358,70 @@ async function ackAllAlerts() {
   await loadDashboard();
 }
 
+function formatLevelBadge(lvl) {
+  const u = (lvl || 'INFO').toUpperCase();
+  if (u === 'ERROR') return '<span class="badge ERROR">ERROR · Błąd</span>';
+  if (u === 'WARN' || u === 'WARNING') return '<span class="badge WARN">WARN · Ostrzeżenie</span>';
+  if (u === 'DEBUG') return '<span class="badge INFO">DEBUG · Diagnostyka</span>';
+  return '<span class="badge INFO">INFO · OK</span>';
+}
+
+function formatStatusCell(e) {
+  const st = Number(e.status || e.http_status || 0);
+  if (!st) return '<span style="color:var(--muted)">Zdarzenie wewnętrzne</span>';
+  const cls = st >= 500 ? 'ERROR' : (st >= 400 ? 'WARN' : 'ok');
+  const lbl = e.status_label || (st === 200 ? '200 OK (Sukces)' : (st === 404 ? '404 Not Found (Brak zasobu)' : String(st)));
+  return '<span class="badge ' + cls + '">' + lbl + '</span>';
+}
+
+function formatEntryDescription(e) {
+  const st = Number(e.status || e.http_status || 0);
+  const lvl = (e.level || 'INFO').toUpperCase();
+  const code = e.error_code || '';
+  const codeLabel = e.error_code_label || '';
+  const desc = e.error_description || '';
+  if (st >= 400 || lvl === 'ERROR' || lvl === 'WARN') {
+    const header = codeLabel ? ('<strong>' + codeLabel + '</strong> <span class="mono" style="color:var(--muted)">[' + code + ']</span>') : (code ? '<strong>' + code + '</strong>' : '<strong>Ostrzeżenie / Błąd</strong>');
+    const body = desc || e.msg || 'Wystąpił błąd podczas przetwarzania żądania.';
+    return '<div>' + header + '<div class="err-desc">' + body + '</div></div>';
+  }
+  if (e.event === 'calc.price.completed') {
+    return '<div><strong>Wyliczenie ceny kalkulatora zakończone pomyślnie</strong><div class="err-sub">group_id=' + (e.group_id||'—') + ', type_id=' + (e.type_id||'—') + ', nakład=' + (e.volume||'—') + ' szt.</div></div>';
+  }
+  if (st >= 200 && st < 300) {
+    return '<div>Poprawna odpowiedź HTTP (' + (e.method||'GET') + ' ' + (e.path||e.route||'/') + ')<div class="err-sub">' + (e.msg||'http_request') + '</div></div>';
+  }
+  return '<div>' + (e.msg || e.event || 'Zdarzenie aplikacyjne') + '</div>';
+}
+
+function showEntryDetail(idx) {
+  const e = currentEntries[idx];
+  if (!e) return;
+  const box = document.getElementById('log-detail-box');
+  const body = document.getElementById('detail-body');
+  const svc = e.service || 'backend-go';
+  const tid = e.trace_id || '';
+  const k8sCmd = tid
+    ? ('kubectl logs -n home-printworks -l app=' + svc.replace('-go','') + ' --tail=2000 | grep "' + tid + '" | jq .')
+    : ('kubectl logs -n home-printworks -l app=' + svc.replace('-go','') + ' --tail=200 | jq .');
+  body.innerHTML = ` + "`" + `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:0.75rem;margin-bottom:0.75rem">
+      <div style="background:#0f172a;padding:0.65rem;border-radius:0.4rem;border:1px solid var(--border)">
+        <div style="color:var(--muted);font-size:11px">Co się wydarzyło (Diagnoza po polsku):</div>
+        <div style="margin-top:0.25rem;font-weight:600;color:var(--text)">${e.error_description || e.msg || 'Poprawne wykonanie operacji'}</div>
+        <div style="margin-top:0.35rem;font-size:11px;color:var(--muted)">Klasyfikacja: <strong>${e.error_code_label || 'Brak błędu (OK)'}</strong> ${e.error_code ? '(' + e.error_code + ')' : ''}</div>
+      </div>
+      <div style="background:#0f172a;padding:0.65rem;border-radius:0.4rem;border:1px solid var(--border)">
+        <div style="color:var(--muted);font-size:11px">Jak wyciągnąć ten wpis bezpośrednio ze stdout poda (kubectl):</div>
+        <pre class="mono" style="margin:0.35rem 0 0 0;white-space:pre-wrap;color:#38bdf8">${k8sCmd}</pre>
+      </div>
+    </div>
+    <div style="color:var(--muted);font-size:11px;margin-bottom:0.25rem">Surowy rekord JSON (dokładnie taki, jaki trafia na stdout kontenera):</div>
+    <pre class="mono" style="background:#0f172a;padding:0.65rem;border-radius:0.4rem;border:1px solid var(--border);margin:0;overflow-x:auto">${JSON.stringify(e, null, 2)}</pre>
+  ` + "`" + `;
+  box.style.display = 'block';
+}
+
 async function loadDashboard() {
   const params = new URLSearchParams({
     format: 'json',
@@ -2133,10 +2453,10 @@ function renderDashboard(d) {
     <div style="background:#0f172a;border:1px solid var(--border);border-radius:0.4rem;padding:0.65rem">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.35rem">
         <strong>${s.service}</strong>
-        <span class="badge ${s.status}">${s.status}</span>
+        <span class="badge ${s.status}">${s.status === 'UP' ? 'UP · Działa' : s.status}</span>
       </div>
-      <div style="color:var(--muted);font-size:11px">Success Rate: <strong style="color:var(--text)">${s.success_rate_pct}%</strong> · Avg: ${s.avg_latency_ms}ms</div>
-      <div style="color:var(--muted);font-size:11px">Żądania: ${s.total_requests} · 5xx: <span style="color:${s.errors_5xx>0?'#f87171':'#94a3b8'}">${s.errors_5xx}</span> · v${s.version}</div>
+      <div style="color:var(--muted);font-size:11px">Skuteczność 2xx/4xx: <strong style="color:var(--text)">${s.success_rate_pct}%</strong> · Śr. czas: ${s.avg_latency_ms}ms</div>
+      <div style="color:var(--muted);font-size:11px">Żądania: ${s.total_requests} · Błędy 5xx: <span style="color:${s.errors_5xx>0?'#f87171':'#94a3b8'}">${s.errors_5xx}</span> · 4xx: ${s.warnings_4xx||0} · v${s.version}</div>
     </div>
   ` + "`" + `).join('');
 
@@ -2150,10 +2470,10 @@ function renderDashboard(d) {
     : alerts.map(a => ` + "`" + `
       <div style="background:rgba(239,68,68,0.12);border:1px solid #ef4444;border-radius:0.375rem;padding:0.45rem 0.6rem;margin-bottom:0.4rem;display:flex;justify-content:space-between;align-items:center">
         <div>
-          <span class="badge ${a.severity}">${a.rule_code}</span>
-          <strong>${a.service}</strong> — ${a.message} <span class="mono">(x${a.count})</span>
+          <span class="badge ${a.severity}">${a.rule_code} · ${a.severity === 'CRITICAL' ? 'Krytyczny' : 'Ostrzeżenie'}</span>
+          <strong>${a.service}</strong> — ${a.message} <span class="mono">(powtórzeń: ${a.count})</span>
         </div>
-        ${a.trace_id ? ` + "`" + `<span class="trace-link mono" onclick="setTraceFilter('${a.trace_id}')">Trace: ${a.trace_id.slice(0,12)}…</span>` + "`" + ` : ''}
+        ${a.trace_id ? ` + "`" + `<span class="trace-link mono" onclick="setTraceFilter('${a.trace_id}')">Pokaż Trace: ${a.trace_id.slice(0,12)}…</span>` + "`" + ` : ''}
       </div>
     ` + "`" + `).join('');
 
@@ -2162,8 +2482,8 @@ function renderDashboard(d) {
       <td>${r.service}</td>
       <td class="mono">${r.route}</td>
       <td>${r.count}</td>
-      <td><span class="badge ${r.errors_5xx>0?'ERROR':'ok'}">${r.errors_5xx}</span></td>
-      <td class="mono">${r.last_error_code || '—'}</td>
+      <td><span class="badge ${r.errors_5xx>0?'ERROR':'ok'}">${r.errors_5xx > 0 ? (r.errors_5xx + ' błędów 5xx') : '0 błędów'}</span></td>
+      <td>${r.last_error_code ? ('<span class="mono">' + r.last_error_code + '</span>') : (r.warnings_4xx > 0 ? (r.warnings_4xx + 'x status 4xx (klient/404)') : 'Brak błędów')}</td>
       <td class="mono">${r.sample_trace_id ? ` + "`" + `<span class="trace-link" onclick="setTraceFilter('${r.sample_trace_id}')">${r.sample_trace_id.slice(0,12)}…</span>` + "`" + ` : '—'}</td>
     </tr>
   ` + "`" + `).join('');
@@ -2196,7 +2516,7 @@ function renderDashboard(d) {
 
   // Section 5 Runtime & Audit
   const h = d.section5_runtime_health || {};
-  document.getElementById('sec5-runtime').textContent = ` + "`" + `Goroutines: ${h.goroutines||0} · Heap: ${h.heap_alloc_mb||0} MB · GC: ${h.num_gc||0} · Bufor: ${h.buffered_logs||0}` + "`" + `;
+  document.getElementById('sec5-runtime').textContent = ` + "`" + `Goroutines: ${h.goroutines||0} · Heap: ${h.heap_alloc_mb||0} MB · Wyjście: ${h.persist_path||'stdout'} · Bufor RAM: ${h.buffered_logs||0}/500` + "`" + `;
   const audits = d.section5_audit_trail || [];
   document.getElementById('sec5-audit').innerHTML = audits.length === 0
     ? '<tr><td colspan="6" style="color:var(--muted)">Brak zarejestrowanych operacji audytowych w bieżącym oknie.</td></tr>'
@@ -2212,19 +2532,19 @@ function renderDashboard(d) {
     ` + "`" + `).join('');
 
   // Logs table
-  const entries = d.entries || [];
-  document.getElementById('logs-count').textContent = 'Wyświetlono: ' + entries.length + ' wpisów';
-  document.getElementById('logs-tbody').innerHTML = entries.map(e => ` + "`" + `
-    <tr>
+  currentEntries = d.entries || [];
+  document.getElementById('logs-count').textContent = 'Wyświetlono: ' + currentEntries.length + ' wpisów (kliknij wiersz po szczegóły i komendę kubectl)';
+  document.getElementById('logs-tbody').innerHTML = currentEntries.map((e, idx) => ` + "`" + `
+    <tr class="log-row" onclick="showEntryDetail(${idx})">
       <td class="mono">${(e.time||'').replace('T',' ').slice(0,23)}</td>
-      <td><span class="badge ${e.level||'INFO'}">${e.level||'INFO'}</span></td>
+      <td>${formatLevelBadge(e.level)}</td>
       <td><strong>${e.service||''}</strong></td>
       <td class="mono">${e.log_category||'application'}</td>
       <td class="mono">${e.method ? (e.method + ' ' + (e.path||e.route||'')) : (e.route||'—')}</td>
-      <td>${e.status ? ` + "`" + `<span class="badge ${e.status>=500?'ERROR':(e.status>=400?'WARN':'ok')}">${e.status}</span>` + "`" + ` : '—'}</td>
+      <td>${formatStatusCell(e)}</td>
       <td class="mono">${e.duration_ms !== undefined ? e.duration_ms + ' ms' : '—'}</td>
-      <td>${e.msg||''} ${e.error_code ? ` + "`" + `<span class="badge ERROR">${e.error_code}</span>` + "`" + ` : ''}</td>
-      <td class="mono">${e.trace_id ? ` + "`" + `<span class="trace-link" onclick="setTraceFilter('${e.trace_id}')">${e.trace_id.slice(0,12)}…</span>` + "`" + ` : '—'}</td>
+      <td>${formatEntryDescription(e)}</td>
+      <td class="mono" onclick="event.stopPropagation()">${e.trace_id ? ` + "`" + `<span class="trace-link" onclick="setTraceFilter('${e.trace_id}')">${e.trace_id.slice(0,12)}…</span>` + "`" + ` : '—'}</td>
     </tr>
   ` + "`" + `).join('');
 }

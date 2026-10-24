@@ -660,4 +660,120 @@ func TestObservabilityKeycloakAndManagerJWTAuth(t *testing.T) {
 	if shouldServeHTMLUI(httptest.NewRequest(http.MethodGet, "/api/_meta/logs?format=json", nil)) {
 		t.Fatalf("did not expect format=json to serve HTML UI")
 	}
+	if shouldServeHTMLUI(httptest.NewRequest(http.MethodGet, "/api/_meta/logs?format=ndjson", nil)) {
+		t.Fatalf("did not expect format=ndjson to serve HTML UI")
+	}
+
+	// 10. Verify human-readable Polish error descriptions, 404 RESOURCE_NOT_FOUND, status_label, 4xx_err filter, and NDJSON stdout stream
+	norm404Icon := NormalizeLogRecord(map[string]any{"method": "GET", "path": "/api/uploaded-icons/954", "status": 404}, "backend-go", "prod", "2.0.59")
+	if norm404Icon["error_code"] != "RESOURCE_NOT_FOUND" || norm404Icon["error_type"] != "not_found" {
+		t.Fatalf("expected 404 to be classified as RESOURCE_NOT_FOUND / not_found, got %v / %v", norm404Icon["error_code"], norm404Icon["error_type"])
+	}
+	if !strings.Contains(firstString(norm404Icon, "error_description"), "ps_uploaded_file_blobs") {
+		t.Fatalf("expected uploaded-icons 404 description to explain ps_uploaded_file_blobs, got %v", norm404Icon["error_description"])
+	}
+	norm404Theme := NormalizeLogRecord(map[string]any{"method": "GET", "path": "/api/layout/theme/active", "status": 404}, "backend-go", "prod", "2.0.59")
+	if !strings.Contains(firstString(norm404Theme, "error_description"), "motywu") {
+		t.Fatalf("expected theme 404 description, got %v", norm404Theme["error_description"])
+	}
+	norm405 := NormalizeLogRecord(map[string]any{"method": "HEAD", "path": "/api/uploaded-icons/891/pudelka.png", "status": 405}, "backend-go", "prod", "2.0.59")
+	if norm405["error_code"] != "METHOD_NOT_ALLOWED" {
+		t.Fatalf("expected 405 METHOD_NOT_ALLOWED, got %v", norm405["error_code"])
+	}
+	norm409 := NormalizeLogRecord(map[string]any{"method": "POST", "path": "/api/users", "status": 409, "error_detail": "duplicate email"}, "backend-go", "prod", "2.0.59")
+	if norm409["error_code"] != "CONFLICT" || !strings.Contains(firstString(norm409, "error_description"), "duplicate email") {
+		t.Fatalf("expected 409 CONFLICT with error_detail, got %+v", norm409)
+	}
+	if !matchesStatusClass(401, "4xx_err") || matchesStatusClass(404, "4xx_err") || !matchesStatusClass(404, "404") {
+		t.Fatalf("expected 4xx_err to match 401 and exclude 404")
+	}
+
+	reqNDJSON := httptest.NewRequest(http.MethodGet, "/api/_meta/logs?format=ndjson&limit=5", nil)
+	reqNDJSON.Header.Set("Authorization", "Bearer "+bffLegacyTok)
+	wNDJSON := httptest.NewRecorder()
+	ServeObservabilityEndpoint(wNDJSON, reqNDJSON)
+	if wNDJSON.Code != http.StatusOK || !strings.Contains(wNDJSON.Header().Get("Content-Type"), "application/x-ndjson") {
+		t.Fatalf("expected 200 application/x-ndjson, got %d %s", wNDJSON.Code, wNDJSON.Header().Get("Content-Type"))
+	}
+
+	t.Setenv("LOG_PERSIST_PATH", "")
+	if resolveDefaultPersistPath("backend-go") != "" {
+		t.Fatalf("expected empty persistPath by default (stdout-only mode)")
+	}
+	if ExtractErrorDetailFromBody([]byte(`{"error":"missing icon file","reason":"empty_upload"}`)) != "missing icon file (empty_upload)" {
+		t.Fatalf("unexpected ExtractErrorDetailFromBody JSON result")
+	}
+	if ExtractErrorDetailFromBody([]byte("404 page not found\n")) != "404 page not found" {
+		t.Fatalf("unexpected ExtractErrorDetailFromBody plain text result")
+	}
+	if ExtractErrorDetailFromBody([]byte("<!DOCTYPE html><html></html>")) != "" {
+		t.Fatalf("expected HTML body to be ignored by ExtractErrorDetailFromBody")
+	}
+	stLbl, eCode, eCodeLbl, eType, eDesc := BuildHTTPDiagnosticFields("POST", "/api/dp_categories/uploadIcon", 400, []byte(`{"error":"missing icon file"}`))
+	if !strings.Contains(stLbl, "400") || eCode != "VALIDATION_FAILED" || eCodeLbl == "" || eType != "validation" || !strings.Contains(eDesc, "missing icon file") {
+		t.Fatalf("unexpected BuildHTTPDiagnosticFields: %s | %s | %s | %s | %s", stLbl, eCode, eCodeLbl, eType, eDesc)
+	}
+	if describeHTTPStatusLabel(200) != "200 OK — Żądanie wykonane poprawnie" {
+		t.Fatalf("unexpected 200 status label")
+	}
+	if describeHTTPStatusLabel(201) != "201 Created — Zasób został utworzony" {
+		t.Fatalf("unexpected 201 status label")
+	}
+	if describeHTTPStatusLabel(204) != "204 No Content — Wykonano pomyślnie (brak treści odpowiedzi)" {
+		t.Fatalf("unexpected 204 status label")
+	}
+	if describeHTTPStatusLabel(401) == "" {
+		t.Fatalf("expected non-empty 401 status label")
+	}
+	if describeHTTPStatusLabel(403) == "" {
+		t.Fatalf("expected non-empty 403 status label")
+	}
+	if describeHTTPStatusLabel(404) == "" {
+		t.Fatalf("expected non-empty 404 status label")
+	}
+	if describeHTTPStatusLabel(405) == "" {
+		t.Fatalf("expected non-empty 405 status label")
+	}
+	if describeHTTPStatusLabel(409) == "" {
+		t.Fatalf("expected non-empty 409 status label")
+	}
+	if describeHTTPStatusLabel(422) == "" {
+		t.Fatalf("expected non-empty 422 status label")
+	}
+	if describeHTTPStatusLabel(429) == "" {
+		t.Fatalf("expected non-empty 429 status label")
+	}
+	if describeHTTPStatusLabel(500) == "" {
+		t.Fatalf("expected non-empty 500 status label")
+	}
+	if describeHTTPStatusLabel(502) == "" {
+		t.Fatalf("expected non-empty 502 status label")
+	}
+	if describeHTTPStatusLabel(503) == "" {
+		t.Fatalf("expected non-empty 503 status label")
+	}
+	if describeHTTPStatusLabel(504) == "" {
+		t.Fatalf("expected non-empty 504 status label")
+	}
+	if describeErrorCodePolish("RESOURCE_NOT_FOUND") == "" {
+		t.Fatalf("expected RESOURCE_NOT_FOUND polish label")
+	}
+	if describeErrorCodePolish("METHOD_NOT_ALLOWED") == "" {
+		t.Fatalf("expected METHOD_NOT_ALLOWED polish label")
+	}
+	if describeErrorCodePolish("AUTH_FORBIDDEN") == "" {
+		t.Fatalf("expected AUTH_FORBIDDEN polish label")
+	}
+	if describeErrorCodePolish("CONFLICT") == "" {
+		t.Fatalf("expected CONFLICT polish label")
+	}
+	if describeErrorCodePolish("RATE_LIMITED") == "" {
+		t.Fatalf("expected RATE_LIMITED polish label")
+	}
+	if describeErrorCodePolish("UPSTREAM_UNAVAILABLE") == "" {
+		t.Fatalf("expected UPSTREAM_UNAVAILABLE polish label")
+	}
+	if describeErrorCodePolish("INTERNAL_ERROR") == "" {
+		t.Fatalf("expected INTERNAL_ERROR polish label")
+	}
 }
