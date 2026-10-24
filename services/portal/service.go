@@ -78,7 +78,7 @@ header{display:flex;justify-content:space-between;align-items:center;border-bott
 .card h3{margin:0 0 0.5rem 0;color:#38bdf8;font-size:1rem}
 .card p{margin:0;color:#94a3b8;font-size:0.85rem}
 </style></head><body>
-<header><div><h1 style="margin:0;font-size:1.5rem">RAE Suite v4.8 Command Center (PWA Offline-First)</h1><small style="color:#94a3b8">14 Integrated Views: ` + viewsHTML + `</small></div><span class="badge">ISO/IEC 42001 COMPLIANT</span></header>
+<header><div><h1 style="margin:0;font-size:1.5rem">RAE Suite v4.8 Command Center (PWA Offline-First)</h1><small style="color:#94a3b8">14 Integrated Views: ` + viewsHTML + `</small></div><div style="display:flex;gap:0.75rem;align-items:center"><a href="/_meta/logs/ui" style="background:#0284c7;color:#f8fafc;padding:0.35rem 0.85rem;border-radius:999px;font-weight:700;font-size:0.85rem;text-decoration:none">Dreamsoft &amp; RAE Operations Center (Logi &amp; OTel)</a><span class="badge">ISO/IEC 42001 COMPLIANT</span></div></header>
 <div class="grid">
 <div class="card"><h3>1. MissionControl</h3><p>9/9 RAE-Go Departments Online · P50 Latency 0.08ms</p></div>
 <div class="card"><h3>2. SearchConsole</h3><p>9 Hybrid Strategies · 3 Math Engines · Named Vectors</p></div>
@@ -97,6 +97,11 @@ header{display:flex;justify-content:space-between;align-items:center;border-bott
 </div>
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js');}</script>
 </body></html>`))
+	})
+
+	mux.HandleFunc("/logs", func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = "/_meta/logs/ui"
+		ops.ServeObservabilityEndpoint(w, r)
 	})
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
