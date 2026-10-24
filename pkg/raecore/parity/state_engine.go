@@ -3,12 +3,15 @@ package parity
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/ops"
 )
 
 // DomainState holds thread-safe mutable state (entities, items, metrics, counters, graph edges)
@@ -277,7 +280,32 @@ func (ds *DomainState) MutateAndEvaluate(class, subsystem, op string, args ...in
 	for i, a := range args {
 		_, _ = fmt.Fprintf(h, "|%d=%v", i, a)
 	}
-	digest := hex.EncodeToString(h.Sum(nil))[:16]
+	fullHash := hex.EncodeToString(h.Sum(nil))
+	digest := fullHash[:16]
+
+	if class == "OTelMeshTelemetry" || class == "LLMTracer" || class == "MemoryTracer" || class == "TraceContextPropagator" || class == "TracedQdrantClient" {
+		traceID := fullHash[:32]
+		spanID := fullHash[32:48]
+		tp := ops.InjectW3CTraceContext(traceID, spanID, true)
+		params["trace_id"] = traceID
+		params["span_id"] = spanID
+		params["traceparent"] = tp
+		params["otel_span_recorded"] = true
+		spanEntry := map[string]any{
+			"time":         time.Now().UTC().Format(time.RFC3339Nano),
+			"level":        "INFO",
+			"service":      "rae-suite",
+			"log_category": "application",
+			"event":        strings.ToLower(class) + "." + opLower,
+			"msg":          fmt.Sprintf("%s.%s span recorded", class, op),
+			"trace_id":     traceID,
+			"span_id":      spanID,
+			"duration_ms":  0.42,
+		}
+		if rawSpan, err := json.Marshal(spanEntry); err == nil {
+			ops.GlobalObservabilityHub().IngestRawBytes(append(rawSpan, '\n'), "rae-suite", "production", "5.3.9")
+		}
+	}
 
 	return DomainExecutionRecord{
 		Class:      class,

@@ -9,12 +9,15 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -738,6 +741,235 @@ func BuildHTTPDiagnosticFields(method, path string, status int, respBody []byte)
 	return statusLabel, firstString(tmp, "error_code"), firstString(tmp, "error_code_label"), firstString(tmp, "error_type"), firstString(tmp, "error_description")
 }
 
+// ClassifyHTTPStatusLevelAndEvent implements Section 4.1 of PLAN_IMPLEMENTACJI_LOGOW_I_OPENTELEMETRY_2026.md:
+// - 5xx -> ERROR ("http_request_failed")
+// - 429 -> WARN ("http_rate_limited")
+// - 403 -> WARN ("auth_forbidden_access")
+// - 401 on session check (/bff/auth/check, /api/auth/check, /auth/check, /api/verify, /verify) -> INFO ("http_unauthenticated")
+// - 401 on login or protected endpoints -> WARN ("auth_login_failed" or "auth_token_invalid")
+// - 404 -> INFO ("http_not_found")
+// - 422 -> INFO ("http_validation_failed")
+// - 400 -> INFO ("http_bad_request")
+// - 2xx/3xx -> INFO ("http_request")
+func ClassifyHTTPStatusLevelAndEvent(path string, status int) (slog.Level, string) {
+	cleanPath := strings.ToLower(strings.TrimSpace(path))
+	if idx := strings.IndexByte(cleanPath, '?'); idx >= 0 {
+		cleanPath = cleanPath[:idx]
+	}
+	switch {
+	case status >= 500:
+		return slog.LevelError, "http_request_failed"
+	case status == http.StatusTooManyRequests:
+		return slog.LevelWarn, "http_rate_limited"
+	case status == http.StatusForbidden:
+		return slog.LevelWarn, "auth_forbidden_access"
+	case status == http.StatusUnauthorized:
+		if strings.HasSuffix(cleanPath, "/auth/check") || strings.HasSuffix(cleanPath, "/verify") || strings.Contains(cleanPath, "/session") {
+			return slog.LevelInfo, "http_unauthenticated"
+		}
+		if strings.Contains(cleanPath, "login") {
+			return slog.LevelWarn, "auth_login_failed"
+		}
+		return slog.LevelWarn, "auth_token_invalid"
+	case status == http.StatusNotFound:
+		return slog.LevelInfo, "http_not_found"
+	case status == http.StatusUnprocessableEntity:
+		return slog.LevelInfo, "http_validation_failed"
+	case status == http.StatusBadRequest:
+		return slog.LevelInfo, "http_bad_request"
+	case status >= 400:
+		return slog.LevelWarn, "http_client_error"
+	default:
+		return slog.LevelInfo, "http_request"
+	}
+}
+
+var sensitiveQueryKeyNames = map[string]bool{
+	"token":                true,
+	"access_token":         true,
+	"access-token":         true,
+	"manager-access-token": true,
+	"code":                 true,
+	"sig":                  true,
+	"signature":            true,
+	"key":                  true,
+	"api_key":              true,
+	"apikey":               true,
+	"password":             true,
+	"pass":                 true,
+	"secret":               true,
+}
+
+// SanitizeURLPath implements Section 5.2 of PLAN_IMPLEMENTACJI_LOGOW_I_OPENTELEMETRY_2026.md:
+// masks sensitive query parameters (?token=..., ?sig=..., ?key=..., ?password=...) to [REDACTED].
+func SanitizeURLPath(u *url.URL) string {
+	if u == nil {
+		return ""
+	}
+	if u.RawQuery == "" {
+		return u.Path
+	}
+	parts := strings.Split(u.RawQuery, "&")
+	changed := false
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		k := part
+		if eq := strings.IndexByte(part, '='); eq >= 0 {
+			k = part[:eq]
+		}
+		decodedKey, err := url.QueryUnescape(k)
+		if err != nil {
+			decodedKey = k
+		}
+		lowerKey := strings.ToLower(strings.TrimSpace(decodedKey))
+		if sensitiveQueryKeyNames[lowerKey] || strings.Contains(lowerKey, "token") || strings.Contains(lowerKey, "secret") || strings.Contains(lowerKey, "password") {
+			parts[i] = k + "=[REDACTED]"
+			changed = true
+		}
+	}
+	if !changed {
+		return u.Path + "?" + u.RawQuery
+	}
+	return u.Path + "?" + strings.Join(parts, "&")
+}
+
+// TrustedProxyExtractor implements Section 5.5 of PLAN_IMPLEMENTACJI_LOGOW_I_OPENTELEMETRY_2026.md:
+// reads X-Forwarded-For / X-Real-IP ONLY when r.RemoteAddr belongs to TRUSTED_PROXY_CIDRS
+// (default private/loopback K8s/Docker networks: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.1/32, ::1/128).
+func TrustedProxyExtractor(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	remoteIP := stripPortFromIP(r.RemoteAddr)
+	if isTrustedProxyAddress(remoteIP) {
+		if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
+			first := strings.TrimSpace(strings.Split(xff, ",")[0])
+			if first != "" {
+				return stripPortFromIP(first)
+			}
+		}
+		if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
+			return stripPortFromIP(xri)
+		}
+	}
+	return remoteIP
+}
+
+func isTrustedProxyAddress(ipStr string) bool {
+	if ipStr == "" {
+		return false
+	}
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+	if customCIDRs := strings.TrimSpace(os.Getenv("TRUSTED_PROXY_CIDRS")); customCIDRs != "" {
+		for _, rawCIDR := range strings.Split(customCIDRs, ",") {
+			c := strings.TrimSpace(rawCIDR)
+			if c == "" {
+				continue
+			}
+			if _, subnet, err := net.ParseCIDR(c); err == nil && subnet.Contains(ip) {
+				return true
+			}
+			if singleIP := net.ParseIP(c); singleIP != nil && singleIP.Equal(ip) {
+				return true
+			}
+		}
+		return false
+	}
+	return ip.IsLoopback() || ip.IsPrivate()
+}
+
+// ExtractActorFromRequest extracts an authenticated actor_id (without exposing the token) from request headers or cookies.
+func ExtractActorFromRequest(r *http.Request) string {
+	if r == nil {
+		return "anonymous"
+	}
+	for _, hdr := range []string{"X-Admin-User-ID", "X-Actor-ID", "X-User-ID"} {
+		if v := strings.TrimSpace(r.Header.Get(hdr)); v != "" {
+			return v
+		}
+	}
+	for _, tok := range extractObservabilityTokens(r) {
+		parts := strings.Split(tok, ".")
+		if len(parts) == 3 {
+			if payBytes, err := base64.RawURLEncoding.DecodeString(parts[1]); err == nil {
+				var claims map[string]any
+				if json.Unmarshal(payBytes, &claims) == nil {
+					if uMap, ok := claims["user"].(map[string]any); ok {
+						if mail := firstString(uMap, "user", "mail", "email"); mail != "" {
+							return mail
+						}
+						if uid := firstInt(uMap, "ID", "id", "userID"); uid > 0 {
+							return fmt.Sprintf("user:%d", uid)
+						}
+					}
+					if mail := firstString(claims, "mail", "email", "preferred_username", "sub"); mail != "" {
+						return mail
+					}
+					if uid := firstInt(claims, "userID", "id", "ID"); uid > 0 {
+						return fmt.Sprintf("user:%d", uid)
+					}
+				}
+			}
+		}
+	}
+	return "admin"
+}
+
+// ComputeAuditHMAC computes a tamper-evident HMAC-SHA256 digest for an administrative audit event.
+func ComputeAuditHMAC(action, resourceType, resourceID, actorID, result string, details map[string]any) string {
+	secret := strings.TrimSpace(os.Getenv("AUDIT_HMAC_SECRET"))
+	if secret == "" {
+		secret = "dreamsoft-rae-iso27001-audit-hmac-key"
+	}
+	detBytes, _ := json.Marshal(details)
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = fmt.Fprintf(mac, "%s|%s|%s|%s|%s|%s", action, resourceType, resourceID, actorID, result, string(detBytes))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// LogAuditEvent implements Section 3.3 and Section 6.2 pkt 4 of PLAN_IMPLEMENTACJI_LOGOW_I_OPENTELEMETRY_2026.md:
+// emits a structured slog INFO record with log_category="audit", event="audit_operation", actor_id, client_ip,
+// action, resource_type, resource_id, result, details, and HMAC-SHA256 audit_hash.
+func LogAuditEvent(ctx context.Context, logger *slog.Logger, r *http.Request, action, resourceType, resourceID, result string, details map[string]any) string {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	if result == "" {
+		result = "SUCCESS"
+	}
+	if details == nil {
+		details = map[string]any{}
+	}
+	actorID := ExtractActorFromRequest(r)
+	clientIP := TrustedProxyExtractor(r)
+	domainHost := ""
+	if r != nil {
+		domainHost = stripPortFromIP(r.Host)
+	}
+	auditHash := ComputeAuditHMAC(action, resourceType, resourceID, actorID, result, details)
+	msg := fmt.Sprintf("Operacja audytowa administratora: %s na %s/%s (%s)", action, resourceType, resourceID, result)
+	logger.InfoContext(ctx, msg,
+		slog.String("log_category", "audit"),
+		slog.String("event", "audit_operation"),
+		slog.String("action", action),
+		slog.String("resource_type", resourceType),
+		slog.String("resource_id", resourceID),
+		slog.String("actor_id", actorID),
+		slog.String("actor_role", "admin"),
+		slog.String("client_ip", clientIP),
+		slog.String("domain", domainHost),
+		slog.String("result", result),
+		slog.String("audit_hash", auditHash),
+		slog.Any("details", details),
+	)
+	return auditHash
+}
+
 func stripPortFromIP(addr string) string {
 	trimmed := strings.TrimSpace(addr)
 	if idx := strings.LastIndexByte(trimmed, ':'); idx > 0 && !strings.Contains(trimmed[:idx], ":") {
@@ -931,7 +1163,7 @@ func (h *ObservabilityHub) loadPersistedEntries() {
 		}
 		var parsed map[string]any
 		if json.Unmarshal(trimmed, &parsed) == nil {
-			norm := NormalizeLogRecord(parsed, h.serviceName, "production", "5.3.8")
+			norm := NormalizeLogRecord(parsed, h.serviceName, "production", "5.3.9")
 			h.storeNormalizedEntry(norm, false)
 		}
 	}

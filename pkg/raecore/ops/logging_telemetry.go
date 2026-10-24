@@ -232,7 +232,7 @@ func NewCanonicalLogger(service, env, version string, w io.Writer, level slog.Le
 		env = "production"
 	}
 	if version == "" {
-		version = "5.3.7"
+		version = "5.3.9"
 	}
 	w = GlobalObservabilityHub().WrapWriter(w, service, version, env)
 	baseHandler := slog.NewJSONHandler(w, &slog.HandlerOptions{
@@ -327,7 +327,9 @@ func RequestLoggerMiddleware(logger *slog.Logger, next http.Handler) http.Handle
 		next.ServeHTTP(rec, r.WithContext(ctx))
 
 		durMs := float64(time.Since(start).Microseconds()) / 1000.0
+		cleanPath := SanitizeURLPath(r.URL)
 		routePattern := NormalizeRoutePattern(r.URL.Path)
+		clientIP := TrustedProxyExtractor(r)
 		if logger != nil {
 			if isHealthEndpoint(r.URL.Path) && rec.status < 400 {
 				logger.Log(ctx, slog.LevelDebug, "health_check_completed",
@@ -335,8 +337,8 @@ func RequestLoggerMiddleware(logger *slog.Logger, next http.Handler) http.Handle
 					slog.String("log_category", "infrastructure"),
 					slog.String("method", r.Method),
 					slog.String("http_method", r.Method),
-					slog.String("path", r.URL.Path),
-					slog.String("http_path", r.URL.Path),
+					slog.String("path", cleanPath),
+					slog.String("http_path", cleanPath),
 					slog.String("route", routePattern),
 					slog.String("http_route", routePattern),
 					slog.Int("status", rec.status),
@@ -346,19 +348,14 @@ func RequestLoggerMiddleware(logger *slog.Logger, next http.Handler) http.Handle
 				)
 				return
 			}
-			lvl := slog.LevelInfo
-			if rec.status >= 500 {
-				lvl = slog.LevelError
-			} else if rec.status >= 400 {
-				lvl = slog.LevelWarn
-			}
+			lvl, evtName := ClassifyHTTPStatusLevelAndEvent(r.URL.Path, rec.status)
 			logger.Log(ctx, lvl, "http_request_completed",
-				slog.String("event", "http_request_completed"),
+				slog.String("event", evtName),
 				slog.String("log_category", "access"),
 				slog.String("method", r.Method),
 				slog.String("http_method", r.Method),
-				slog.String("path", r.URL.Path),
-				slog.String("http_path", r.URL.Path),
+				slog.String("path", cleanPath),
+				slog.String("http_path", cleanPath),
 				slog.String("route", routePattern),
 				slog.String("http_route", routePattern),
 				slog.Int("status", rec.status),
@@ -367,6 +364,7 @@ func RequestLoggerMiddleware(logger *slog.Logger, next http.Handler) http.Handle
 				slog.Int("bytes", rec.bytes),
 				slog.Int("response_bytes", rec.bytes),
 				slog.Float64("duration_ms", durMs),
+				slog.String("client_ip", clientIP),
 				slog.String("parent_span_id", parentSpanID),
 			)
 		}
