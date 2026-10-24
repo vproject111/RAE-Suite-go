@@ -711,21 +711,21 @@ var nonHexRegex = regexp.MustCompile(`[^0-9a-fA-F]`)
 func InjectW3CTraceContext(traceID, spanID string, sampled bool) string {
 	cleanTrace := strings.ToLower(nonHexRegex.ReplaceAllString(strings.ReplaceAll(traceID, "trace-", ""), ""))
 	if len(cleanTrace) < 32 {
-		cleanTrace = (cleanTrace + strings.Repeat("a", 32))[:32]
+		cleanTrace = generateHexID(16)
 	} else {
 		cleanTrace = cleanTrace[:32]
 	}
 	if cleanTrace == strings.Repeat("0", 32) {
-		cleanTrace = strings.Repeat("a", 32)
+		cleanTrace = generateHexID(16)
 	}
 	cleanSpan := strings.ToLower(nonHexRegex.ReplaceAllString(spanID, ""))
 	if len(cleanSpan) < 16 {
-		cleanSpan = (cleanSpan + strings.Repeat("b", 16))[:16]
+		cleanSpan = generateHexID(8)
 	} else {
 		cleanSpan = cleanSpan[:16]
 	}
 	if cleanSpan == strings.Repeat("0", 16) {
-		cleanSpan = strings.Repeat("b", 16)
+		cleanSpan = generateHexID(8)
 	}
 	flags := "00"
 	if sampled {

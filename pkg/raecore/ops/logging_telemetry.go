@@ -232,8 +232,9 @@ func NewCanonicalLogger(service, env, version string, w io.Writer, level slog.Le
 		env = "production"
 	}
 	if version == "" {
-		version = "2.9.0"
+		version = "5.3.5"
 	}
+	w = GlobalObservabilityHub().WrapWriter(w, service, version, env)
 	baseHandler := slog.NewJSONHandler(w, &slog.HandlerOptions{
 		Level:       level,
 		ReplaceAttr: RedactAttr,
@@ -280,17 +281,21 @@ func (sr *statusRecorder) Write(b []byte) (int, error) {
 }
 
 func isHealthEndpoint(path string) bool {
-	switch strings.ToLower(strings.TrimSpace(path)) {
-	case "/health", "/healthz", "/livez", "/readyz":
+	p := strings.ToLower(strings.TrimSpace(path))
+	switch p {
+	case "/health", "/healthz", "/livez", "/readyz", "/system-logs", "/logs":
 		return true
 	default:
-		return false
+		return strings.HasPrefix(p, "/_meta/") || strings.HasPrefix(p, "/api/_meta/")
 	}
 }
 
 // RequestLoggerMiddleware extracts/propagates W3C traceparent, attaches TelemetryContext, and logs HTTP requests (suppressing INFO noise on health endpoints).
 func RequestLoggerMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ServeObservabilityEndpoint(w, r) {
+			return
+		}
 		start := time.Now()
 		tpHeader := r.Header.Get("traceparent")
 		traceID, parentSpanID, sampled, ok := ParseW3CTraceparent(tpHeader)
@@ -322,13 +327,21 @@ func RequestLoggerMiddleware(logger *slog.Logger, next http.Handler) http.Handle
 		next.ServeHTTP(rec, r.WithContext(ctx))
 
 		durMs := float64(time.Since(start).Microseconds()) / 1000.0
+		routePattern := NormalizeRoutePattern(r.URL.Path)
 		if logger != nil {
 			if isHealthEndpoint(r.URL.Path) && rec.status < 400 {
 				logger.Log(ctx, slog.LevelDebug, "health_check_completed",
 					slog.String("event", "http_request_completed"),
+					slog.String("log_category", "infrastructure"),
+					slog.String("method", r.Method),
 					slog.String("http_method", r.Method),
+					slog.String("path", r.URL.Path),
 					slog.String("http_path", r.URL.Path),
+					slog.String("route", routePattern),
+					slog.String("http_route", routePattern),
+					slog.Int("status", rec.status),
 					slog.Int("http_status", rec.status),
+					slog.Int("status_code", rec.status),
 					slog.Float64("duration_ms", durMs),
 				)
 				return
@@ -341,9 +354,17 @@ func RequestLoggerMiddleware(logger *slog.Logger, next http.Handler) http.Handle
 			}
 			logger.Log(ctx, lvl, "http_request_completed",
 				slog.String("event", "http_request_completed"),
+				slog.String("log_category", "access"),
+				slog.String("method", r.Method),
 				slog.String("http_method", r.Method),
+				slog.String("path", r.URL.Path),
 				slog.String("http_path", r.URL.Path),
+				slog.String("route", routePattern),
+				slog.String("http_route", routePattern),
+				slog.Int("status", rec.status),
 				slog.Int("http_status", rec.status),
+				slog.Int("status_code", rec.status),
+				slog.Int("bytes", rec.bytes),
 				slog.Int("response_bytes", rec.bytes),
 				slog.Float64("duration_ms", durMs),
 				slog.String("parent_span_id", parentSpanID),
