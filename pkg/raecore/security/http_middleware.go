@@ -21,7 +21,7 @@ func getHTTPMiddlewareLogger() *slog.Logger {
 		if svcName == "" {
 			svcName = "rae-suite-go"
 		}
-		defaultHTTPMiddlewareLogger = ops.NewCanonicalLogger(svcName, os.Getenv("RAE_ENV"), "5.3.6", os.Stdout, slog.LevelInfo)
+		defaultHTTPMiddlewareLogger = ops.NewCanonicalLogger(svcName, os.Getenv("RAE_ENV"), "5.3.7", os.Stdout, slog.LevelInfo)
 	})
 	return defaultHTTPMiddlewareLogger
 }

@@ -232,7 +232,7 @@ func NewCanonicalLogger(service, env, version string, w io.Writer, level slog.Le
 		env = "production"
 	}
 	if version == "" {
-		version = "5.3.6"
+		version = "5.3.7"
 	}
 	w = GlobalObservabilityHub().WrapWriter(w, service, version, env)
 	baseHandler := slog.NewJSONHandler(w, &slog.HandlerOptions{
