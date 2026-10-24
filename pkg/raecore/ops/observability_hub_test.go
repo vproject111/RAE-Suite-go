@@ -3,13 +3,20 @@ package ops
 import (
 	"bytes"
 	"context"
+	"crypto"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
-	"log/slog"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestObservabilityHub_CanonicalSchemaAndAlertEngine(t *testing.T) {
@@ -66,7 +73,7 @@ func TestObservabilityHub_CanonicalSchemaAndAlertEngine(t *testing.T) {
 		"http_status":    502,
 		"response_bytes": 512,
 		"remote_addr":    "10.0.0.15:54321",
-	}, "rae-suite", "production", "5.3.5")
+	}, "rae-suite", "production", "5.3.6")
 	if norm["method"] != "POST" {
 		t.Fatalf("expected method POST, got %v", norm["method"])
 	}
@@ -92,15 +99,15 @@ func TestObservabilityHub_CanonicalSchemaAndAlertEngine(t *testing.T) {
 		t.Fatalf("expected log_category access, got %v", norm["log_category"])
 	}
 
-	norm429 := NormalizeLogRecord(map[string]any{"status": 429, "path": "/api/login"}, "rae-suite", "prod", "5.3.5")
+	norm429 := NormalizeLogRecord(map[string]any{"status": 429, "path": "/api/login"}, "rae-suite", "prod", "5.3.6")
 	if norm429["error_code"] != "RATE_LIMITED" {
 		t.Fatalf("expected RATE_LIMITED, got %v", norm429["error_code"])
 	}
-	norm400 := NormalizeLogRecord(map[string]any{"status": 400, "path": "/api/login"}, "rae-suite", "prod", "5.3.5")
+	norm400 := NormalizeLogRecord(map[string]any{"status": 400, "path": "/api/login"}, "rae-suite", "prod", "5.3.6")
 	if norm400["error_code"] != "VALIDATION_FAILED" {
 		t.Fatalf("expected VALIDATION_FAILED, got %v", norm400["error_code"])
 	}
-	normAudit := NormalizeLogRecord(map[string]any{"action": "DELETE_USER", "msg": "audit delete"}, "rae-suite", "prod", "5.3.5")
+	normAudit := NormalizeLogRecord(map[string]any{"action": "DELETE_USER", "msg": "audit delete"}, "rae-suite", "prod", "5.3.6")
 	if normAudit["log_category"] != "audit" {
 		t.Fatalf("expected audit category, got %v", normAudit["log_category"])
 	}
@@ -109,17 +116,17 @@ func TestObservabilityHub_CanonicalSchemaAndAlertEngine(t *testing.T) {
 	}
 
 	// 1. Trigger DS-ALERT-01 (High 5xx Error Rate)
-	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:00Z","level":"ERROR","msg":"db timeout","http_method":"POST","http_path":"/api/orders/99","http_status":500,"duration_ms":125.4,"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","company_id":"25","domain":"printworks.pl"}`+"\n"), "rae-suite", "test", "5.3.5")
+	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:00Z","level":"ERROR","msg":"db timeout","http_method":"POST","http_path":"/api/orders/99","http_status":500,"duration_ms":125.4,"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","company_id":"25","domain":"printworks.pl"}`+"\n"), "rae-suite", "test", "5.3.6")
 	// 2. Trigger DS-ALERT-02 (CalcEngineLatencyBreach > 150ms on /calculate)
-	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:01Z","level":"WARN","msg":"slow calc","method":"POST","path":"/api/ps_types/12/ps_calculate","status":200,"duration_ms":612.8,"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"11f067aa0ba902b8","company_id":"25","domain":"printworks.pl"}`+"\n"), "rae-suite", "test", "5.3.5")
+	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:01Z","level":"WARN","msg":"slow calc","method":"POST","path":"/api/ps_types/12/ps_calculate","status":200,"duration_ms":612.8,"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"11f067aa0ba902b8","company_id":"25","domain":"printworks.pl"}`+"\n"), "rae-suite", "test", "5.3.6")
 	// 3. Trigger DS-ALERT-03 (ServiceReadinessDown)
-	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:02Z","level":"ERROR","event":"readiness_failed","path":"/readyz","status":503}`+"\n"), "rae-suite", "test", "5.3.5")
+	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:02Z","level":"ERROR","event":"readiness_failed","path":"/readyz","status":503}`+"\n"), "rae-suite", "test", "5.3.6")
 	// 4. Trigger DS-ALERT-04 (PodRestartOrOOMKilled)
-	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:03Z","level":"ERROR","event":"http_handler_panic_recovered","error_code":"ERR_INTERNAL_PANIC"}`+"\n"), "rae-suite", "test", "5.3.5")
+	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:03Z","level":"ERROR","event":"http_handler_panic_recovered","error_code":"ERR_INTERNAL_PANIC"}`+"\n"), "rae-suite", "test", "5.3.6")
 	// 5. Trigger DS-ALERT-05 (SecurityAuthSpike)
-	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:04Z","level":"WARN","event":"auth_login_failed","path":"/login","status":403}`+"\n"), "rae-suite", "test", "5.3.5")
+	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:04Z","level":"WARN","event":"auth_login_failed","path":"/login","status":403}`+"\n"), "rae-suite", "test", "5.3.6")
 	// 6. Trigger DS-ALERT-06 (RAEAuditChainBroken)
-	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:05Z","level":"ERROR","event":"audit_chain_broken","log_category":"audit","company_id":"25"}`+"\n"), "rae-suite", "test", "5.3.5")
+	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:05Z","level":"ERROR","event":"audit_chain_broken","log_category":"audit","company_id":"25"}`+"\n"), "rae-suite", "test", "5.3.6")
 
 	alerts := hub.ListAlerts(true)
 	if len(alerts) < 6 {
@@ -216,38 +223,20 @@ func TestObservabilityHTTPHandlersAndFederation(t *testing.T) {
 		t.Fatalf("did not expect /api/v1/memories to be meta path")
 	}
 
-	rec := NewTestLogRecorder()
-	logger := NewCanonicalLogger("rae-suite-test", "test", "5.3.5", rec, slog.LevelDebug)
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/test/123", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"error":"boom"}`))
-	})
-	handler := RequestLoggerMiddleware(logger, mux)
-
-	// 1. Trigger a 500 error through middleware
-	req := httptest.NewRequest(http.MethodGet, "/api/test/123", nil)
-	req.Header.Set("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d", w.Code)
-	}
+	// 1. Ingest a synthetic 500 error directly into GlobalObservabilityHub
+	GlobalObservabilityHub().IngestRawBytes([]byte(`{"time":"2026-10-24T12:10:30Z","level":"ERROR","msg":"boom","method":"GET","path":"/api/test/123","status":500,"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7"}`+"\n"), "rae-suite-test", "test", "5.3.6")
 
 	// 2. Ingest endpoint /_meta/logs/ingest
 	reqIngest := httptest.NewRequest(http.MethodPost, "/_meta/logs/ingest", bytes.NewBufferString(`{"time":"2026-10-24T12:11:00Z","level":"INFO","service":"editor-go","msg":"ingested log"}`))
 	wIngest := httptest.NewRecorder()
-	handler.ServeHTTP(wIngest, reqIngest)
-	if wIngest.Code != http.StatusOK {
+	if !ServeObservabilityEndpoint(wIngest, reqIngest) || wIngest.Code != http.StatusOK {
 		t.Fatalf("expected 200 from /_meta/logs/ingest, got %d", wIngest.Code)
 	}
 
 	// 3. Query /_meta/logs with federation enabled
 	reqLogs := httptest.NewRequest(http.MethodGet, "/_meta/logs?limit=50", nil)
 	wLogs := httptest.NewRecorder()
-	handler.ServeHTTP(wLogs, reqLogs)
-	if wLogs.Code != http.StatusOK {
+	if !ServeObservabilityEndpoint(wLogs, reqLogs) || wLogs.Code != http.StatusOK {
 		t.Fatalf("expected 200 from /_meta/logs, got %d", wLogs.Code)
 	}
 	var payload map[string]interface{}
@@ -264,30 +253,26 @@ func TestObservabilityHTTPHandlersAndFederation(t *testing.T) {
 	// 4. Query /_meta/alerts, trigger test alert, and ack
 	reqTestAlert := httptest.NewRequest(http.MethodPost, "/_meta/alerts/test?service=rae-suite-test", nil)
 	wTestAlert := httptest.NewRecorder()
-	handler.ServeHTTP(wTestAlert, reqTestAlert)
-	if wTestAlert.Code != http.StatusOK {
+	if !ServeObservabilityEndpoint(wTestAlert, reqTestAlert) || wTestAlert.Code != http.StatusOK {
 		t.Fatalf("expected 200 from /_meta/alerts/test, got %d", wTestAlert.Code)
 	}
 
 	reqAck := httptest.NewRequest(http.MethodPost, "/_meta/alerts/ack", bytes.NewBufferString(`{"id":"all"}`))
 	wAck := httptest.NewRecorder()
-	handler.ServeHTTP(wAck, reqAck)
-	if wAck.Code != http.StatusOK {
+	if !ServeObservabilityEndpoint(wAck, reqAck) || wAck.Code != http.StatusOK {
 		t.Fatalf("expected 200 from /_meta/alerts/ack, got %d", wAck.Code)
 	}
 
 	reqAlerts := httptest.NewRequest(http.MethodGet, "/_meta/alerts?all=1", nil)
 	wAlerts := httptest.NewRecorder()
-	handler.ServeHTTP(wAlerts, reqAlerts)
-	if wAlerts.Code != http.StatusOK {
+	if !ServeObservabilityEndpoint(wAlerts, reqAlerts) || wAlerts.Code != http.StatusOK {
 		t.Fatalf("expected 200 from /_meta/alerts, got %d", wAlerts.Code)
 	}
 
 	// 5. Query HTML Presentation Layer /_meta/logs/ui
 	reqUI := httptest.NewRequest(http.MethodGet, "/_meta/logs/ui", nil)
 	wUI := httptest.NewRecorder()
-	handler.ServeHTTP(wUI, reqUI)
-	if wUI.Code != http.StatusOK {
+	if !ServeObservabilityEndpoint(wUI, reqUI) || wUI.Code != http.StatusOK {
 		t.Fatalf("expected 200 from /_meta/logs/ui, got %d", wUI.Code)
 	}
 	uiBody := wUI.Body.String()
@@ -372,5 +357,260 @@ func TestObservabilityHTTPHandlersAndFederation(t *testing.T) {
 	}
 	if ServeObservabilityEndpoint(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/unknown", nil)) {
 		t.Fatalf("did not expect /unknown to be handled by ServeObservabilityEndpoint")
+	}
+}
+
+func makeHS256TestJWT(secret string, claims map[string]any) string {
+	hdr := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
+	payBytes, _ := json.Marshal(claims)
+	pay := base64.RawURLEncoding.EncodeToString(payBytes)
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(hdr + "." + pay))
+	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return hdr + "." + pay + "." + sig
+}
+
+func TestObservabilityKeycloakAndManagerJWTAuth(t *testing.T) {
+	// 1. External unauthenticated requests MUST be rejected with 401
+	protectedPaths := []string{
+		"/_meta/logs",
+		"/_meta/logs/ingest",
+		"/_meta/alerts",
+		"/_meta/alerts/ack",
+		"/_meta/alerts/test",
+	}
+	for _, p := range protectedPaths {
+		req := httptest.NewRequest(http.MethodGet, p, nil)
+		req.Header.Set("X-Forwarded-For", "203.0.113.42")
+		w := httptest.NewRecorder()
+		ServeObservabilityEndpoint(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 Unauthorized on unauthenticated %s, got %d", p, w.Code)
+		}
+	}
+
+	// 2. Malformed, bad-base64, bad-signature, expired, and empty-claim JWTs must fail
+	if ok, reason := verifyObservabilityJWT("not-a-jwt"); ok || reason != "invalid_jwt_format" {
+		t.Fatalf("expected invalid_jwt_format, got ok=%v reason=%s", ok, reason)
+	}
+	if ok, reason := verifyObservabilityJWT("!!!.@@@.###"); ok || reason != "invalid_jwt_base64" {
+		t.Fatalf("expected invalid_jwt_base64, got ok=%v reason=%s", ok, reason)
+	}
+	badJSONTok := base64.RawURLEncoding.EncodeToString([]byte("{bad")) + "." + base64.RawURLEncoding.EncodeToString([]byte("{bad")) + "." + base64.RawURLEncoding.EncodeToString([]byte("sig"))
+	if ok, reason := verifyObservabilityJWT(badJSONTok); ok || reason != "invalid_jwt_json" {
+		t.Fatalf("expected invalid_jwt_json, got ok=%v reason=%s", ok, reason)
+	}
+
+	expiredTok := makeHS256TestJWT("@!&#*@JHAKJHJKSD", map[string]any{
+		"exp":  time.Now().Add(-10 * time.Minute).Unix(),
+		"user": map[string]any{"ID": 1, "super": 1, "user": "admin@printworks.pl"},
+	})
+	if ok, reason := verifyObservabilityJWT(expiredTok); ok || reason != "jwt_expired" {
+		t.Fatalf("expected jwt_expired, got ok=%v reason=%s", ok, reason)
+	}
+
+	wrongSigTok := makeHS256TestJWT("wrong-secret-key", map[string]any{
+		"exp":  time.Now().Add(10 * time.Minute).Unix(),
+		"user": map[string]any{"ID": 1, "super": 1, "user": "admin@printworks.pl"},
+	})
+	if ok, reason := verifyObservabilityJWT(wrongSigTok); ok || reason != "invalid_jwt_signature" {
+		t.Fatalf("expected invalid_jwt_signature, got ok=%v reason=%s", ok, reason)
+	}
+
+	emptyClaimsTok := makeHS256TestJWT("@!&#*@JHAKJHJKSD", map[string]any{
+		"exp": time.Now().Add(10 * time.Minute).Unix(),
+	})
+	if ok, reason := verifyObservabilityJWT(emptyClaimsTok); ok || reason != "insufficient_jwt_claims" {
+		t.Fatalf("expected insufficient_jwt_claims, got ok=%v reason=%s", ok, reason)
+	}
+
+	// 3. Valid Manager HS256 JWT via Authorization Bearer, Cookie, and Query param
+	validManagerTok := makeHS256TestJWT("@!&#*@JHAKJHJKSD", map[string]any{
+		"exp":  time.Now().Add(30 * time.Minute).Unix(),
+		"user": map[string]any{"ID": 7, "super": 1, "user": "admin@printworks.pl"},
+	})
+	reqBearer := httptest.NewRequest(http.MethodGet, "/_meta/logs", nil)
+	reqBearer.Header.Set("X-Forwarded-For", "203.0.113.42")
+	reqBearer.Header.Set("Authorization", "Bearer "+validManagerTok)
+	wBearer := httptest.NewRecorder()
+	ServeObservabilityEndpoint(wBearer, reqBearer)
+	if wBearer.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK with valid Manager HS256 Bearer token, got %d", wBearer.Code)
+	}
+
+	reqCookie := httptest.NewRequest(http.MethodGet, "/_meta/logs", nil)
+	reqCookie.Header.Set("X-Forwarded-For", "203.0.113.42")
+	reqCookie.AddCookie(&http.Cookie{Name: "access-token", Value: validManagerTok})
+	wCookie := httptest.NewRecorder()
+	ServeObservabilityEndpoint(wCookie, reqCookie)
+	if wCookie.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK with valid access-token cookie, got %d", wCookie.Code)
+	}
+
+	reqQuery := httptest.NewRequest(http.MethodGet, "/_meta/logs?access-token="+validManagerTok, nil)
+	reqQuery.Header.Set("X-Forwarded-For", "203.0.113.42")
+	wQuery := httptest.NewRecorder()
+	ServeObservabilityEndpoint(wQuery, reqQuery)
+	if wQuery.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK with valid ?access-token= query parameter, got %d", wQuery.Code)
+	}
+
+	// 4. Valid Keycloak OIDC RS256 JWT verified via JWKS endpoint
+	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate RSA key: %v", err)
+	}
+	jwksSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		nStr := base64.RawURLEncoding.EncodeToString(privKey.PublicKey.N.Bytes())
+		eStr := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(privKey.PublicKey.E)).Bytes())
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"keys":[{"kid":"kc-key-1","kty":"RSA","n":"` + nStr + `","e":"` + eStr + `"}]}`))
+	}))
+	defer jwksSrv.Close()
+	t.Setenv("KEYCLOAK_JWKS_URL", jwksSrv.URL)
+
+	kcHdr := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT","kid":"kc-key-1"}`))
+	kcPayBytes, _ := json.Marshal(map[string]any{
+		"exp":                time.Now().Add(30 * time.Minute).Unix(),
+		"sub":                "f901-admin-uuid",
+		"preferred_username": "grzegorz",
+		"realm_access":       map[string]any{"roles": []string{"admin", "superadmin"}},
+	})
+	kcPay := base64.RawURLEncoding.EncodeToString(kcPayBytes)
+	digest := sha256.Sum256([]byte(kcHdr + "." + kcPay))
+	rsaSig, err := rsa.SignPKCS1v15(rand.Reader, privKey, crypto.SHA256, digest[:])
+	if err != nil {
+		t.Fatalf("failed to sign RS256 token: %v", err)
+	}
+	kcToken := kcHdr + "." + kcPay + "." + base64.RawURLEncoding.EncodeToString(rsaSig)
+
+	reqKC := httptest.NewRequest(http.MethodGet, "/_meta/logs", nil)
+	reqKC.Header.Set("X-Forwarded-For", "203.0.113.42")
+	reqKC.Header.Set("Authorization", "Bearer "+kcToken)
+	wKC := httptest.NewRecorder()
+	ServeObservabilityEndpoint(wKC, reqKC)
+	if wKC.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK with valid Keycloak RS256 token, got %d", wKC.Code)
+	}
+
+	// 5. Internal Federation from private IP without X-Forwarded-For is allowed; with X-Forwarded-For is blocked
+	reqFedOK := httptest.NewRequest(http.MethodGet, "/_meta/logs?federated=0", nil)
+	reqFedOK.RemoteAddr = "10.42.1.15:54321"
+	reqFedOK.Header.Set("X-Internal-Federation", "1")
+	if ok, reason := AuthorizeObservabilityRequest(reqFedOK); !ok || reason != "internal_federation" {
+		t.Fatalf("expected internal_federation to be allowed, got ok=%v reason=%s", ok, reason)
+	}
+	reqFedSpoof := httptest.NewRequest(http.MethodGet, "/_meta/logs?federated=0", nil)
+	reqFedSpoof.RemoteAddr = "10.42.1.15:54321"
+	reqFedSpoof.Header.Set("X-Internal-Federation", "1")
+	reqFedSpoof.Header.Set("X-Forwarded-For", "198.51.100.77")
+	if ok, _ := AuthorizeObservabilityRequest(reqFedSpoof); ok {
+		t.Fatalf("expected spoofed X-Internal-Federation with X-Forwarded-For to be rejected")
+	}
+
+	// 6. Static OBS_ADMIN_TOKEN / RAE_API_KEY
+	t.Setenv("OBS_ADMIN_TOKEN", "obs-secret-token-2026")
+	reqAPIKey := httptest.NewRequest(http.MethodGet, "/_meta/logs", nil)
+	reqAPIKey.Header.Set("X-Forwarded-For", "203.0.113.42")
+	reqAPIKey.Header.Set("X-API-Key", "obs-secret-token-2026")
+	if ok, reason := AuthorizeObservabilityRequest(reqAPIKey); !ok || reason != "api_key:OBS_ADMIN_TOKEN" {
+		t.Fatalf("expected OBS_ADMIN_TOKEN to be authorized, got ok=%v reason=%s", ok, reason)
+	}
+	RegisterObservabilityRSAPublicKey("manual-kid", &privKey.PublicKey)
+	if lookupKeycloakRSAPublicKey("manual-kid") == nil {
+		t.Fatalf("expected manual-kid RSA public key to be cached")
+	}
+	if !isPrivateOrLoopbackHost("127.0.0.1:8000") {
+		t.Fatalf("expected 127.0.0.1:8000 to be loopback")
+	}
+	if !isPrivateOrLoopbackHost("192.168.1.10:8080") {
+		t.Fatalf("expected 192.168.1.10:8080 to be private")
+	}
+	if !isPrivateOrLoopbackHost("172.18.0.5:9000") {
+		t.Fatalf("expected 172.18.0.5:9000 to be private")
+	}
+	if !isPrivateOrLoopbackHost("::1") {
+		t.Fatalf("expected ::1 to be loopback")
+	}
+	if isPrivateOrLoopbackHost("8.8.8.8:53") {
+		t.Fatalf("did not expect 8.8.8.8:53 to be private/loopback")
+	}
+	if isPrivateOrLoopbackHost("invalid-ip") {
+		t.Fatalf("did not expect invalid-ip to be private/loopback")
+	}
+
+	// Verify additional meta paths and token extraction branches
+	if !IsObservabilityMetaPath("/_meta/logs/ingest") {
+		t.Fatalf("expected /_meta/logs/ingest to be meta path")
+	}
+	if !IsObservabilityMetaPath("/api/_meta/logs/ingest") {
+		t.Fatalf("expected /api/_meta/logs/ingest to be meta path")
+	}
+	if !IsObservabilityMetaPath("/_meta/alerts") {
+		t.Fatalf("expected /_meta/alerts to be meta path")
+	}
+	if !IsObservabilityMetaPath("/api/_meta/alerts") {
+		t.Fatalf("expected /api/_meta/alerts to be meta path")
+	}
+	if !IsObservabilityMetaPath("/_meta/alerts/ack") {
+		t.Fatalf("expected /_meta/alerts/ack to be meta path")
+	}
+	if !IsObservabilityMetaPath("/api/_meta/alerts/ack") {
+		t.Fatalf("expected /api/_meta/alerts/ack to be meta path")
+	}
+	if !IsObservabilityMetaPath("/_meta/alerts/test") {
+		t.Fatalf("expected /_meta/alerts/test to be meta path")
+	}
+	if !IsObservabilityMetaPath("/api/_meta/alerts/test") {
+		t.Fatalf("expected /api/_meta/alerts/test to be meta path")
+	}
+	if !IsObservabilityMetaPath("/v2/portal/logs") {
+		t.Fatalf("expected /v2/portal/logs to be meta path")
+	}
+	if !IsObservabilityMetaPath("/v2/portal/alerts") {
+		t.Fatalf("expected /v2/portal/alerts to be meta path")
+	}
+	if !IsObservabilityMetaPath("/_meta/logs/ui") {
+		t.Fatalf("expected /_meta/logs/ui to be meta path")
+	}
+	if !IsObservabilityMetaPath("/api/_meta/logs") {
+		t.Fatalf("expected /api/_meta/logs to be meta path")
+	}
+	if IsObservabilityMetaPath("/api/calculatePublic") {
+		t.Fatalf("did not expect /api/calculatePublic to be meta path")
+	}
+	if IsObservabilityMetaPath("/healthz") {
+		t.Fatalf("did not expect /healthz to be meta path")
+	}
+	if IsObservabilityMetaPath("/readyz") {
+		t.Fatalf("did not expect /readyz to be meta path")
+	}
+	reqHdrTok := httptest.NewRequest(http.MethodGet, "/_meta/logs", nil)
+	reqHdrTok.Header.Set("Access-Token", "hdr-tok-1")
+	if extractObservabilityToken(reqHdrTok) != "hdr-tok-1" {
+		t.Fatalf("expected Access-Token header extraction")
+	}
+	reqXTok := httptest.NewRequest(http.MethodGet, "/_meta/logs", nil)
+	reqXTok.Header.Set("X-Access-Token", "hdr-tok-2")
+	if extractObservabilityToken(reqXTok) != "hdr-tok-2" {
+		t.Fatalf("expected X-Access-Token header extraction")
+	}
+	reqMgrCookie := httptest.NewRequest(http.MethodGet, "/_meta/logs", nil)
+	reqMgrCookie.AddCookie(&http.Cookie{Name: "manager-access-token", Value: "mgr-cookie-tok"})
+	if extractObservabilityToken(reqMgrCookie) != "mgr-cookie-tok" {
+		t.Fatalf("expected manager-access-token cookie extraction")
+	}
+	reqKCCookie := httptest.NewRequest(http.MethodGet, "/_meta/logs", nil)
+	reqKCCookie.AddCookie(&http.Cookie{Name: "KEYCLOAK_IDENTITY", Value: "kc-cookie-tok"})
+	if extractObservabilityToken(reqKCCookie) != "kc-cookie-tok" {
+		t.Fatalf("expected KEYCLOAK_IDENTITY cookie extraction")
+	}
+	topClaimsTok := makeHS256TestJWT("@!&#*@INNYSECRET", map[string]any{
+		"exp":    time.Now().Add(15 * time.Minute).Unix(),
+		"super":  1,
+		"userID": 42,
+	})
+	if ok, _ := verifyObservabilityJWT(topClaimsTok); !ok {
+		t.Fatalf("expected top-level super=1 HS256 token with secondary secret to verify")
 	}
 }
