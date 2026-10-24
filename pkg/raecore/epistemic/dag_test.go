@@ -68,4 +68,38 @@ func TestOfflineEvidencePackageVerification(t *testing.T) {
 	if err := epistemic.VerifyEvidencePackageOffline(pkg, guard); err == nil {
 		t.Fatal("expected tampered signature to fail offline verification")
 	}
+
+	// Self-loop and empty relation type in ValidateDAGAddition
+	if err := epistemic.ValidateDAGAddition(nil, "X", "Y", ""); err != nil {
+		t.Fatalf("expected empty relationType to default to related_to, got %v", err)
+	}
+	if err := epistemic.ValidateDAGAddition(nil, "X", "X", "supports"); err != epistemic.ErrDAGCycleDetected {
+		t.Fatalf("expected self-loop to return ErrDAGCycleDetected, got %v", err)
+	}
+
+	// TopologicalSort with implicit nodes in edges and with cycle
+	orderImplicit, err := epistemic.TopologicalSort([]string{"A"}, []models.ArtifactEdge{
+		{SourceID: "A", TargetID: "B"},
+		{SourceID: "C", TargetID: "D"},
+	})
+	if err != nil || len(orderImplicit) != 4 {
+		t.Fatalf("expected 4 nodes in topological sort, got %v (%v)", orderImplicit, err)
+	}
+	if _, err := epistemic.TopologicalSort([]string{"A", "B"}, []models.ArtifactEdge{
+		{SourceID: "A", TargetID: "B"},
+		{SourceID: "B", TargetID: "A"},
+	}); err != epistemic.ErrDAGCycleDetected {
+		t.Fatalf("expected cycle error in TopologicalSort, got %v", err)
+	}
+
+	// VerifyEvidencePackageOffline missing SBOM/VEX and CID mismatch
+	if err := epistemic.VerifyEvidencePackageOffline(nil, guard); err != epistemic.ErrMissingSBOMOrVEX {
+		t.Fatalf("expected ErrMissingSBOMOrVEX for nil package, got %v", err)
+	}
+	pkgBadCID := *pkg
+	pkgBadCID.VersionCID = "mh:1220deadbeef"
+	if err := epistemic.VerifyEvidencePackageOffline(&pkgBadCID, guard); err != epistemic.ErrInvalidPackageCID {
+		t.Fatalf("expected ErrInvalidPackageCID, got %v", err)
+	}
 }
+

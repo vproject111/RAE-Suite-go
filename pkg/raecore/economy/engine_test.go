@@ -81,3 +81,76 @@ func TestBatchOptimizationEngineAndContextEconomy(t *testing.T) {
 		t.Fatalf("Singleflight cache failed: v1=%v, v2=%v, calls=%d", v1, v2, calls)
 	}
 }
+
+func TestEconomyEdgeCasesAndNegativeBranches(t *testing.T) {
+	eng := NewBatchOptimizationEngine(0)
+	if len(eng.OptimizeAndGroup()) != 0 {
+		t.Fatalf("expected empty batch slice when no pending tasks")
+	}
+	if ts, ds := eng.DispatchBatch(Batch{}); ts != 0 || ds != 0 {
+		t.Fatalf("expected 0 savings on empty batch")
+	}
+	if err := eng.AddTask(BatchTask{ActionType: "invalid_action"}); err == nil {
+		t.Fatalf("expected error on invalid action type")
+	}
+
+	smallEng := NewBatchOptimizationEngine(1)
+	if err := smallEng.AddTask(BatchTask{Module: "m1", ActionType: "analyse"}); err != nil {
+		t.Fatalf("unexpected AddTask error: %v", err)
+	}
+	if err := smallEng.AddTask(BatchTask{Module: "m1", ActionType: "analyse"}); err == nil {
+		t.Fatalf("expected queue overflow error")
+	}
+	// Dispatch once to warm agent, then group again with SetupCost=0 to test warm agent + default SetupCost
+	b1 := smallEng.OptimizeAndGroup()
+	b1[0].SetupCost = 0
+	smallEng.DispatchBatch(b1[0])
+	_ = smallEng.AddTask(BatchTask{Module: "m1", ActionType: "test"})
+	b2 := smallEng.OptimizeAndGroup()
+	if !b2[0].IsWarm {
+		t.Fatalf("expected module m1 agent to be warm")
+	}
+	smallEng.DispatchBatch(b2[0])
+
+	broker := NewContextBroker(0, 0)
+	if k, r, _ := broker.DetermineRetrievalDepth(nil); k != 0 || r {
+		t.Fatalf("expected 0 depth for empty scores")
+	}
+	if k, r, _ := broker.DetermineRetrievalDepth([]float64{0.9}); k != 1 || r {
+		t.Fatalf("expected 1 depth for single score")
+	}
+	if k, r, _ := broker.DetermineRetrievalDepth([]float64{0.90, 0.80}); k != 10 || !r {
+		t.Fatalf("expected 10 depth and rerank=true for medium gap, got %d %v", k, r)
+	}
+
+	tinyBroker := NewContextBroker(5, 0.4)
+	shortPruned := tinyBroker.PruneContext(nil, "")
+	if len(strings.Fields(shortPruned)) > 5 {
+		t.Fatalf("expected PruneContext to truncate fixed header when TokenLimit=5")
+	}
+	_ = broker.PruneContext([]ContextEnvelopeItem{
+		{MemoryLayer: "reflective", TrustScore: 0.85, SourceHash: "", RetrievedContent: "No hash item"},
+	}, "")
+
+	eval := NewContextTrustEvaluator()
+	if _, cls := eval.EvaluateTrust(map[string]interface{}{
+		"layer":         "working",
+		"risk_class":    "R6",
+		"quarantined":   true,
+	}); cls != "ADVISORY_ONLY" {
+		t.Fatalf("expected quarantined item to be ADVISORY_ONLY, got %s", cls)
+	}
+	if _, cls := eval.EvaluateTrust(map[string]interface{}{
+		"layer":      "reflective",
+		"risk_class": "R5",
+	}); cls != "REJECTED" && cls != "ADVISORY_ONLY" {
+		t.Fatalf("unexpected classification for R5 reflective: %s", cls)
+	}
+
+	cache := NewHardenedSemanticCache(0, 0)
+	if _, err := cache.GetOrCompute("k", nil, false); err == nil {
+		t.Fatalf("expected error when computeFn is nil")
+	}
+	_, _ = cache.GetOrCompute("neg", func() interface{} { return "missing" }, true)
+}
+

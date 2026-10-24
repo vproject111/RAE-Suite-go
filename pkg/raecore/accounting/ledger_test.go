@@ -104,3 +104,87 @@ func TestExecutionAuditLedgerAndRotationAndReceipts(t *testing.T) {
 		t.Fatalf("AnalyzeProject unexpected: %+v", projSummary)
 	}
 }
+
+func TestAccountingEdgeCasesNegativeReceiptsAndEmptyLedger(t *testing.T) {
+	if len(RegisteredPackageTypes()) == 0 {
+		t.Fatalf("expected non-empty RegisteredPackageTypes")
+	}
+	// Empty ledger defaults and AnalyzeProject with 0 receipts
+	emptyLedger := NewExecutionAuditLedger("", 0)
+	emptyProj := emptyLedger.AnalyzeProject("")
+	if emptyProj.ProjectID != "RAE-Suite-go" || emptyProj.TotalPhases != 1 {
+		t.Fatalf("expected default project summary with 1 fallback phase, got %+v", emptyProj)
+	}
+
+	// RecordInvocation with negative numbers and empty provider/user/decision
+	rcpt := emptyLedger.RecordInvocation("local-model", "", "", "intent", "rationale", "", -5, -10, -1.0, -2.0, "ok", 0)
+	if rcpt.Provider != "local_first" || rcpt.UserIdentity != "grzegorz@cloud" || rcpt.Decision != "COMPLETED" || rcpt.TotalTokens != 0 {
+		t.Fatalf("unexpected default normalization in RecordInvocation: %+v", rcpt)
+	}
+	rcptCloud := emptyLedger.RecordInvocation("cloud-model", "", "", "intent", "rationale", "", 10, 10, 0.05, 5.0, "ok", 0)
+	if rcptCloud.Provider != "openrouter" {
+		t.Fatalf("expected openrouter provider for non-zero cost, got %s", rcptCloud.Provider)
+	}
+	mem := BuildFivePillarMemory(rcpt, "")
+	if mem.Project != "RAE-Suite-go" {
+		t.Fatalf("expected default project RAE-Suite-go, got %s", mem.Project)
+	}
+
+	// VerifyExecutionReceipt all violation branches
+	if ok, _ := VerifyExecutionReceipt(ExecutionReceipt{
+		ExecutionStatus:      StatusVerifiedSuccess,
+		TestResult:           TestExecutionResult{ExitCode: 0, FailedCount: 2},
+		CapabilityCompliance: true,
+		GitDiffHash:          "abcdef1234",
+	}); ok {
+		t.Fatalf("expected failure when FailedCount > 0")
+	}
+	if ok, _ := VerifyExecutionReceipt(ExecutionReceipt{
+		ExecutionStatus:      StatusVerifiedSuccess,
+		TestResult:           TestExecutionResult{ExitCode: 0, FailedCount: 0},
+		CapabilityCompliance: false,
+		GitDiffHash:          "abcdef1234",
+	}); ok {
+		t.Fatalf("expected failure when CapabilityCompliance is false")
+	}
+	if ok, _ := VerifyExecutionReceipt(ExecutionReceipt{
+		ExecutionStatus:      StatusVerifiedSuccess,
+		TestResult:           TestExecutionResult{ExitCode: 0, FailedCount: 0},
+		CapabilityCompliance: true,
+		GitDiffHash:          "short",
+	}); ok {
+		t.Fatalf("expected failure when GitDiffHash < 8 chars")
+	}
+	if ok, _ := VerifyExecutionReceipt(ExecutionReceipt{
+		ExecutionStatus: StatusFailed,
+		SHA256Hash:      "tampered_hash",
+	}); ok {
+		t.Fatalf("expected failure on SHA256Hash mismatch")
+	}
+
+	// VerifyReceiptChain edge cases: empty chain, duplicate receipt ID, broken prev_hash
+	if ok, msg := VerifyReceiptChain(nil); !ok || msg != "CHAIN_EMPTY" {
+		t.Fatalf("expected CHAIN_EMPTY, got %v %s", ok, msg)
+	}
+	rValid := ExecutionReceipt{
+		ReceiptID:            "r1",
+		PreviousReceiptHash:  strings.Repeat("0", 64),
+		ExecutionStatus:      StatusPartialSuccess,
+		CapabilityCompliance: true,
+	}
+	rValid.Finalize()
+	if ok, _ := VerifyReceiptChain([]ExecutionReceipt{rValid, rValid}); ok {
+		t.Fatalf("expected duplicate receipt_id error in VerifyReceiptChain")
+	}
+	rBrokenPrev := ExecutionReceipt{
+		ReceiptID:            "r2",
+		PreviousReceiptHash:  "wrong_prev_hash",
+		ExecutionStatus:      StatusPartialSuccess,
+		CapabilityCompliance: true,
+	}
+	rBrokenPrev.Finalize()
+	if ok, _ := VerifyReceiptChain([]ExecutionReceipt{rValid, rBrokenPrev}); ok {
+		t.Fatalf("expected broken chain prev_hash error")
+	}
+}
+

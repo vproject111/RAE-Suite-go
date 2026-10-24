@@ -37,3 +37,42 @@ func TestGraphAlgorithmsPageRankBetweennessClusteringModularity(t *testing.T) {
 		t.Fatalf("unexpected 1-hop subgraph from A: nodes=%v edges=%v", subNodes, subEdges)
 	}
 }
+
+func TestGraphTopologyLeidenAndEdgeCases(t *testing.T) {
+	if len(RegisteredPackageTypes()) == 0 {
+		t.Fatalf("expected non-empty RegisteredPackageTypes")
+	}
+	adj := map[string][]string{
+		"A": {"B", "C"},
+		"B": {"A", "C"},
+		"C": {"A", "B", "D"},
+		"D": {"E", "F"},
+		"E": {"D", "F"},
+		"F": {"D", "E"},
+	}
+	topo := AnalyzeTopology(adj)
+	if topo["node_count"] != 6 || topo["edge_count"] == 0 {
+		t.Fatalf("unexpected AnalyzeTopology result: %+v", topo)
+	}
+	comms := DetectLeidenCommunities(adj)
+	if len(comms) == 0 {
+		t.Fatalf("expected non-empty Leiden communities")
+	}
+
+	// Empty / small graph edge cases
+	if len(ComputePageRank(nil, 0, 0, 0)) != 0 {
+		t.Fatalf("expected empty PageRank on nil graph")
+	}
+	_ = ComputePageRank(map[string][]string{"A": {}}, 0, 0, 0)
+	if len(ComputeBetweennessCentrality(map[string][]string{"A": {"B"}})) != 2 {
+		t.Fatalf("expected 2 nodes in small graph betweenness")
+	}
+	if ComputeModularityQ(nil, nil) != 0.0 {
+		t.Fatalf("expected 0 modularity on nil graph")
+	}
+	if DetectLeidenCommunities(nil) != nil {
+		t.Fatalf("expected nil Leiden communities on empty graph")
+	}
+	_, _ = ExtractSubgraph(adj, []string{"A"}, 0, 0)
+}
+

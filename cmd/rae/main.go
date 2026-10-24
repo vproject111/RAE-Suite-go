@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -16,6 +16,7 @@ import (
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/accounting"
 	raemath "github.com/vproject111/RAE-Suite-go/pkg/raecore/math"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/models"
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/ops"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/security"
 	"github.com/vproject111/RAE-Suite-go/pkg/raemesh"
 	"github.com/vproject111/RAE-Suite-go/services/crl"
@@ -27,6 +28,11 @@ import (
 	"github.com/vproject111/RAE-Suite-go/services/phoenix"
 	"github.com/vproject111/RAE-Suite-go/services/portal"
 	"github.com/vproject111/RAE-Suite-go/services/quality"
+)
+
+var (
+	listenAndServe = http.ListenAndServe
+	exitFunc       = os.Exit
 )
 
 func main() {
@@ -65,12 +71,16 @@ func main() {
 		}
 	}
 
-	allFlag := flag.Bool("all", true, "Run all 9 RAE-Suite & RAE-CRL modules concurrently in one binary")
-	modulesFlag := flag.String("modules", "memory,crl,mcp,suite,quality,lab,phoenix,hive,portal", "Comma-separated list of modules to run")
-	profileFlag := flag.String("profile", "edge", "Storage & execution profile: edge | cluster | hybrid")
-	portOffsetFlag := flag.Int("port-offset", 0, "Optional port offset (e.g. 10000 to run on 18000..18503 alongside Python stack)")
-	dryRunFlag := flag.Bool("dry-run", false, "Verify initialization of selected modules and exit")
-	flag.Parse()
+	fs := flag.NewFlagSet("rae", flag.ContinueOnError)
+	allFlag := fs.Bool("all", true, "Run all 9 RAE-Suite & RAE-CRL modules concurrently in one binary")
+	modulesFlag := fs.String("modules", "memory,crl,mcp,suite,quality,lab,phoenix,hive,portal", "Comma-separated list of modules to run")
+	profileFlag := fs.String("profile", "edge", "Storage & execution profile: edge | cluster | hybrid")
+	portOffsetFlag := fs.Int("port-offset", 0, "Optional port offset (e.g. 10000 to run on 18000..18503 alongside Python stack)")
+	dryRunFlag := fs.Bool("dry-run", false, "Verify initialization of selected modules and exit")
+	_ = fs.Parse(os.Args[1:])
+
+	_ = os.Setenv("RAE_SERVICE_NAME", "rae")
+	logger := ops.NewCanonicalLogger("rae", os.Getenv("RAE_ENV"), "5.3.3", os.Stdout, slog.LevelInfo)
 
 	guard := security.NewHardFramesGuard("")
 	mc := raemath.NewMathController(models.MathL3)
@@ -111,9 +121,9 @@ func main() {
 			defer wg.Done()
 			mux := http.NewServeMux()
 			reg(mux)
-			log.Printf("[%s] listening on %s", name, addr)
-			if err := http.ListenAndServe(addr, security.WrapSecureHandler(mux)); err != nil {
-				log.Printf("[%s] stopped: %v", name, err)
+			logger.InfoContext(ctx, "module_listening", slog.String("event", "service_startup"), slog.String("module", name), slog.String("addr", addr))
+			if err := listenAndServe(addr, security.WrapSecureHandler(mux)); err != nil {
+				logger.ErrorContext(ctx, "module_stopped", slog.String("event", "service_stopped"), slog.String("module", name), slog.String("error", err.Error()))
 			}
 		}()
 	}
@@ -151,6 +161,7 @@ func main() {
 
 	wg.Wait()
 }
+
 
 func runBootstrapCLI(args []string) {
 	fs := flag.NewFlagSet("bootstrap", flag.ExitOnError)
@@ -235,7 +246,8 @@ func runRecordTaskCLI(args []string) {
 	_ = fs.Parse(args)
 
 	if strings.TrimSpace(*task) == "" || strings.TrimSpace(*rationale) == "" || strings.TrimSpace(*effect) == "" {
-		log.Fatalf("record-task requires --task, --rationale, and --effect")
+		exitFunc(1)
+		return
 	}
 
 	ledger := accounting.NewExecutionAuditLedger("", 0)
