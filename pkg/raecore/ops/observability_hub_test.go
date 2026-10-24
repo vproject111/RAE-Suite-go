@@ -10,9 +10,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -713,13 +716,13 @@ func TestObservabilityKeycloakAndManagerJWTAuth(t *testing.T) {
 	if !strings.Contains(stLbl, "400") || eCode != "VALIDATION_FAILED" || eCodeLbl == "" || eType != "validation" || !strings.Contains(eDesc, "missing icon file") {
 		t.Fatalf("unexpected BuildHTTPDiagnosticFields: %s | %s | %s | %s | %s", stLbl, eCode, eCodeLbl, eType, eDesc)
 	}
-	if describeHTTPStatusLabel(200) != "200 OK — Żądanie wykonane poprawnie" {
+	if describeHTTPStatusLabel(200) != "200 OK (Sukces)" {
 		t.Fatalf("unexpected 200 status label")
 	}
-	if describeHTTPStatusLabel(201) != "201 Created — Zasób został utworzony" {
+	if describeHTTPStatusLabel(201) != "201 Created (Utworzono)" {
 		t.Fatalf("unexpected 201 status label")
 	}
-	if describeHTTPStatusLabel(204) != "204 No Content — Wykonano pomyślnie (brak treści odpowiedzi)" {
+	if describeHTTPStatusLabel(204) != "204 No Content (Brak treści)" {
 		t.Fatalf("unexpected 204 status label")
 	}
 	if describeHTTPStatusLabel(401) == "" {
@@ -775,5 +778,86 @@ func TestObservabilityKeycloakAndManagerJWTAuth(t *testing.T) {
 	}
 	if describeErrorCodePolish("INTERNAL_ERROR") == "" {
 		t.Fatalf("expected INTERNAL_ERROR polish label")
+	}
+
+	// Verify ClassifyHTTPStatusLevelAndEvent (Section 4.1)
+	if lvl, evt := ClassifyHTTPStatusLevelAndEvent("/api/orders", 200); lvl != slog.LevelInfo || evt != "http_request" {
+		t.Fatalf("unexpected 200 classification: %v, %s", lvl, evt)
+	}
+	if lvl, evt := ClassifyHTTPStatusLevelAndEvent("/api/orders", 400); lvl != slog.LevelInfo || evt != "http_bad_request" {
+		t.Fatalf("unexpected 400 classification: %v, %s", lvl, evt)
+	}
+	if lvl, evt := ClassifyHTTPStatusLevelAndEvent("/api/orders", 404); lvl != slog.LevelInfo || evt != "http_not_found" {
+		t.Fatalf("unexpected 404 classification: %v, %s", lvl, evt)
+	}
+	if lvl, evt := ClassifyHTTPStatusLevelAndEvent("/api/orders", 422); lvl != slog.LevelInfo || evt != "http_validation_failed" {
+		t.Fatalf("unexpected 422 classification: %v, %s", lvl, evt)
+	}
+	if lvl, evt := ClassifyHTTPStatusLevelAndEvent("/bff/auth/check", 401); lvl != slog.LevelInfo || evt != "http_unauthenticated" {
+		t.Fatalf("unexpected 401 auth check classification: %v, %s", lvl, evt)
+	}
+	if lvl, evt := ClassifyHTTPStatusLevelAndEvent("/api/login", 401); lvl != slog.LevelWarn || evt != "auth_login_failed" {
+		t.Fatalf("unexpected 401 login classification: %v, %s", lvl, evt)
+	}
+	if lvl, evt := ClassifyHTTPStatusLevelAndEvent("/api/orders", 401); lvl != slog.LevelWarn || evt != "auth_token_invalid" {
+		t.Fatalf("unexpected 401 protected classification: %v, %s", lvl, evt)
+	}
+	if lvl, evt := ClassifyHTTPStatusLevelAndEvent("/api/admin/users", 403); lvl != slog.LevelWarn || evt != "auth_forbidden_access" {
+		t.Fatalf("unexpected 403 classification: %v, %s", lvl, evt)
+	}
+	if lvl, evt := ClassifyHTTPStatusLevelAndEvent("/api/orders", 429); lvl != slog.LevelWarn || evt != "http_rate_limited" {
+		t.Fatalf("unexpected 429 classification: %v, %s", lvl, evt)
+	}
+	if lvl, evt := ClassifyHTTPStatusLevelAndEvent("/api/orders", 409); lvl != slog.LevelWarn || evt != "http_client_error" {
+		t.Fatalf("unexpected 409 classification: %v, %s", lvl, evt)
+	}
+	if lvl, evt := ClassifyHTTPStatusLevelAndEvent("/api/orders", 500); lvl != slog.LevelError || evt != "http_request_failed" {
+		t.Fatalf("unexpected 500 classification: %v, %s", lvl, evt)
+	}
+
+	// Verify SanitizeURLPath (Section 5.2)
+	uClean, _ := url.Parse("https://printworks.pl/api/login?token=secret123&code=abc&page=2&password=xyz")
+	sanitized := SanitizeURLPath(uClean)
+	if strings.Contains(sanitized, "secret123") || strings.Contains(sanitized, "abc") || strings.Contains(sanitized, "xyz") || !strings.Contains(sanitized, "page=2") {
+		t.Fatalf("SanitizeURLPath failed to redact sensitive query params: %s", sanitized)
+	}
+	if SanitizeURLPath(nil) != "" {
+		t.Fatalf("expected empty string for nil url")
+	}
+
+	// Verify TrustedProxyExtractor (Section 5.5)
+	reqTrusted := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	reqTrusted.RemoteAddr = "10.42.0.15:54321"
+	reqTrusted.Header.Set("X-Forwarded-For", "203.0.113.77, 10.42.0.1")
+	if gotIP := TrustedProxyExtractor(reqTrusted); gotIP != "203.0.113.77" {
+		t.Fatalf("expected XFF IP 203.0.113.77 from trusted proxy, got %s", gotIP)
+	}
+	reqUntrusted := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	reqUntrusted.RemoteAddr = "198.51.100.44:12345"
+	reqUntrusted.Header.Set("X-Forwarded-For", "1.2.3.4")
+	if gotIP := TrustedProxyExtractor(reqUntrusted); gotIP != "198.51.100.44" {
+		t.Fatalf("expected direct RemoteAddr IP 198.51.100.44 from untrusted peer, got %s", gotIP)
+	}
+	if TrustedProxyExtractor(nil) != "" {
+		t.Fatalf("expected empty IP for nil request")
+	}
+
+	// Verify ExtractActorFromRequest, ComputeAuditHMAC, and LogAuditEvent
+	reqAudit := httptest.NewRequest(http.MethodPost, "/api/admin/orders/55/price", nil)
+	reqAudit.RemoteAddr = "127.0.0.1:8080"
+	reqAudit.Header.Set("X-User-ID", "admin-42")
+	reqAudit.Header.Set("X-Company-ID", "25")
+	reqAudit.Header.Set("X-Domain", "printworks.pl")
+	if actor := ExtractActorFromRequest(reqAudit); actor != "admin-42" {
+		t.Fatalf("expected actor admin-42, got %s", actor)
+	}
+	auditHash := ComputeAuditHMAC("ORDER_PRICE_CHANGE", "order", "55", "admin-42", "SUCCESS", map[string]any{"new_price": 199.99})
+	if len(auditHash) != 64 {
+		t.Fatalf("expected 64-char SHA-256 HMAC hex, got %s", auditHash)
+	}
+	auditLogger := slog.New(slog.NewJSONHandler(GlobalObservabilityHub().WrapWriter(io.Discard, "backend-go", "2.0.60", "test"), nil))
+	returnedHash := LogAuditEvent(context.Background(), auditLogger, reqAudit, "ORDER_PRICE_CHANGE", "order", "55", "SUCCESS", map[string]any{"new_price": 199.99})
+	if returnedHash != auditHash {
+		t.Fatalf("expected LogAuditEvent hash %s to equal ComputeAuditHMAC %s", returnedHash, auditHash)
 	}
 }
