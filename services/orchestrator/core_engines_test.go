@@ -7,6 +7,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/vproject111/RAE-Suite-go/pkg/drivers/memorystore"
+	"github.com/vproject111/RAE-Suite-go/services/crl"
 )
 
 func TestAllCoreEngineHTTPRoutes(t *testing.T) {
@@ -256,4 +259,152 @@ func TestAllCoreEngineHTTPRoutes(t *testing.T) {
 	if rec.Code != http.StatusOK || out["profile"] != "THIN_MOBILE" {
 		t.Fatalf("unexpected /v2/runtime/device-profile: %v", out)
 	}
+}
+
+func TestAllOpsAndEdgeCaseRoutes(t *testing.T) {
+	store := memorystore.NewUnifiedStore(nil, nil)
+	crlSvc := crl.NewService(store, store, nil)
+	svc := NewService(nil, crlSvc, nil, nil)
+	mux := http.NewServeMux()
+	svc.RegisterRoutes(mux)
+
+	postJSON := func(path string, body interface{}) (*httptest.ResponseRecorder, map[string]interface{}) {
+		raw, _ := json.Marshal(body)
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(raw))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		var out map[string]interface{}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec, out
+	}
+
+	getJSON := func(path string) (*httptest.ResponseRecorder, map[string]interface{}) {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		var out map[string]interface{}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec, out
+	}
+
+	// Escalated L3 cascade path
+	_, _ = postJSON("/v2/orchestrator/cascade", map[string]interface{}{
+		"task":       "unsafe eval test",
+		"project":    "rae-go",
+		"code_draft": "eval(user_input)",
+	})
+
+	// Triad with text field, departments with defaults, fabric with query
+	_, _ = postJSON("/v2/triad/run", map[string]interface{}{"text": "fallback text"})
+	_, _ = postJSON("/v2/departments/register", map[string]interface{}{})
+	_, _ = getJSON("/v2/fabric/route?workload=heavy_compute")
+
+	// HITL request default operation, approve valid and invalid
+	_, hitlOut := postJSON("/v2/portal/hitl/request", map[string]interface{}{})
+	reqID, _ := hitlOut["request_id"].(string)
+	if rec, _ := postJSON("/v2/portal/hitl/approve", map[string]interface{}{"request_id": reqID, "approver": "ceo"}); rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on HITL approve, got %d", rec.Code)
+	}
+	if rec, _ := postJSON("/v2/portal/hitl/approve", map[string]interface{}{"request_id": "missing-id", "approver": "ceo"}); rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 on missing HITL approve, got %d", rec.Code)
+	}
+
+	// Knowledge resolve empty query
+	_, _ = postJSON("/v2/knowledge/resolve", map[string]interface{}{"query": ""})
+
+	// Core Engine edge cases
+	if rec, _ := postJSON("/v2/audit/receipt/verify", map[string]interface{}{
+		"receipt_id":       "r-bad",
+		"execution_status": "VERIFIED_SUCCESS",
+		"test_result":      map[string]interface{}{"exit_code": 1},
+	}); rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 on fake success receipt, got %d", rec.Code)
+	}
+	_, _ = getJSON("/v2/audit/project-summary")
+	_, _ = postJSON("/v2/batch/tasks", map[string]interface{}{"task_id": "t-def", "module": "m1", "token_cost": 100})
+	_, _ = postJSON("/v2/batch/tasks", map[string]interface{}{"task_id": "", "module": ""})
+	_, _ = postJSON("/v2/batch/dispatch", map[string]interface{}{})
+	if rec, _ := postJSON("/v2/cognition/council", map[string]interface{}{"risk_tier": 3, "max_cost_per_1m": 0.00001}); rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 on impossible council budget, got %d", rec.Code)
+	}
+	_, _ = postJSON("/v2/context/prune", map[string]interface{}{"constitution": "RULES", "budget_tokens": 500})
+	_, _ = postJSON("/v2/workflows/saga", map[string]interface{}{})
+	if rec, _ := postJSON("/v2/workflows/replay", map[string]interface{}{
+		"step_data": map[string]interface{}{"side_effect": true},
+		"mode":      "EXECUTE_LIVE",
+	}); rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 on unauthorized live replay, got %d", rec.Code)
+	}
+	_, _ = postJSON("/v2/workflows/replay", map[string]interface{}{"step_data": map[string]interface{}{}})
+	_, _ = postJSON("/v2/a2a/send", map[string]interface{}{
+		"secret":  "custom-secret",
+		"nonce":   "dup-nonce-1",
+		"payload": map[string]interface{}{"x": 1},
+	})
+	if rec, _ := postJSON("/v2/a2a/send", map[string]interface{}{
+		"nonce":   "dup-nonce-1",
+		"payload": map[string]interface{}{"x": 1},
+	}); rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 on duplicate A2A nonce, got %d", rec.Code)
+	}
+	if rec, _ := postJSON("/v2/a2a/send", map[string]interface{}{
+		"alg":   "none",
+		"nonce": "nonce-alg-none",
+	}); rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 on alg=none, got %d", rec.Code)
+	}
+	if rec, _ := postJSON("/v2/a2a/send", map[string]interface{}{
+		"sender_id": "unregistered-agent-xyz",
+		"nonce":     "nonce-unreg",
+	}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 on unregistered sender, got %d", rec.Code)
+	}
+	_, _ = postJSON("/v2/autonomy/shadow", map[string]interface{}{
+		"failure_pattern":     "timeout",
+		"test_input":          "timeout",
+		"promote":             true,
+		"hours_active":        1.0,
+		"false_positive_rate": 0.5,
+	})
+	_, _ = getJSON("/v2/runtime/device-profile?ram_mb=8192")
+	_, _ = getJSON("/v2/runtime/device-profile")
+
+	// All 17 Ops Routes in ops_routes.go
+	_, _ = postJSON("/v2/improvement/hypothesis", map[string]interface{}{"statement": "S1", "motivation": "M1", "target_metric": "mrr"})
+	_, _ = postJSON("/v2/improvement/experiment", map[string]interface{}{"name": "E1", "candidate": "C1"})
+	_, _ = postJSON("/v2/improvement/canary", map[string]interface{}{"experiment_id": "exp-1", "error_rate": 0.01})
+	_, _ = postJSON("/v2/improvement/promote", map[string]interface{}{"ShadowPassed": true, "CanaryHealthy": true, "RegressionFree": true})
+	_, _ = getJSON("/v2/ops/cluster?role=inference")
+	for _, act := range []string{"", "failure", "success", "reset"} {
+		_, _ = postJSON("/v2/ops/circuit-breaker", map[string]interface{}{"action": act})
+	}
+	_, _ = postJSON("/v2/ops/rate-limit", map[string]interface{}{"tenant_id": "t1", "cost": 2})
+	_, _ = postJSON("/v2/ops/rate-limit", map[string]interface{}{"cost": 1})
+	_, _ = postJSON("/v2/ops/rollback-sla", map[string]interface{}{"plan_id": "p1", "sla_threshold_seconds": 15, "verified_in_sandbox": true, "risk_class": "R5"})
+	_, _ = postJSON("/v2/ops/escalate", map[string]interface{}{"ConsecutiveFailures": 4})
+	_, _ = postJSON("/v2/ops/reconcile-infra", map[string]interface{}{"healthy": false})
+	_, _ = postJSON("/v2/ops/prompts", map[string]interface{}{"layer": "org", "scope": "dreamsoft", "content": "Follow ISO 42001", "org": "dreamsoft"})
+	_, _ = postJSON("/v2/ops/tool-gateway", map[string]interface{}{"tool_name": "grep", "context_hash": "h1", "is_empty_run": true})
+	_, _ = postJSON("/v2/ops/drift-psi", map[string]interface{}{"baseline": []float64{0.1, 0.2, 0.3}, "current": []float64{0.1, 0.25, 0.35}, "buckets": 3})
+	_, _ = getJSON("/v2/ops/traceparent")
+	if rec, _ := postJSON("/v2/ops/keycloak-verify", map[string]interface{}{
+		"mint_user":           "grzegorz",
+		"mint_tenant":         "dreamsoft",
+		"mint_roles":          []string{"admin"},
+		"mint_scopes":         []string{"rae:execute"},
+		"required_capability": "rae:execute",
+	}); rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on keycloak mint+verify, got %d", rec.Code)
+	}
+	if rec, _ := postJSON("/v2/ops/keycloak-verify", map[string]interface{}{"token": "invalid.jwt.token"}); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 on invalid keycloak token, got %d", rec.Code)
+	}
+	_, _ = postJSON("/v2/ops/eval-harness", map[string]interface{}{"prompt": "normal prompt"})
+	_, _ = getJSON("/v2/ops/hermes-opencode")
+	_, _ = postJSON("/v2/ops/hermes-opencode", map[string]interface{}{"task_id": "t1", "prompt": "fix bug"})
+	_, _ = postJSON("/v2/ops/gitops", map[string]interface{}{"task_id": "t1", "summary": "fix", "rationale": "r", "author": "agent"})
+	_, _ = postJSON("/v2/ops/project-phases", map[string]interface{}{"project": "RAE-Suite-go"})
+	_, _ = getJSON("/v2/portal/global-search?query=ISO")
+	_, _ = postJSON("/v2/ops/global-search", map[string]interface{}{"query": "PDF", "project": "rae-go"})
 }

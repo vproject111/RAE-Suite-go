@@ -3,15 +3,33 @@ package security
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/ops"
 )
 
-// WrapSecureHandler wraps an http.Handler with enterprise security headers (ISO 27001 / OWASP)
-// and optional constant-time API key / Bearer token authentication controlled by RAE_REQUIRE_AUTH and RAE_API_KEY.
+var defaultHTTPMiddlewareLoggerOnce sync.Once
+var defaultHTTPMiddlewareLogger *slog.Logger
+
+func getHTTPMiddlewareLogger() *slog.Logger {
+	defaultHTTPMiddlewareLoggerOnce.Do(func() {
+		svcName := os.Getenv("RAE_SERVICE_NAME")
+		if svcName == "" {
+			svcName = "rae-suite-go"
+		}
+		defaultHTTPMiddlewareLogger = ops.NewCanonicalLogger(svcName, os.Getenv("RAE_ENV"), "5.3.3", os.Stdout, slog.LevelInfo)
+	})
+	return defaultHTTPMiddlewareLogger
+}
+
+// WrapSecureHandler wraps an http.Handler with canonical W3C traceparent + slog JSON request logging,
+// panic recovery, enterprise security headers (ISO 27001 / OWASP), and optional constant-time API key authentication.
 func WrapSecureHandler(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	core := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
@@ -50,6 +68,8 @@ func WrapSecureHandler(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+	logger := getHTTPMiddlewareLogger()
+	return ops.RequestLoggerMiddleware(logger, ops.RecoveryMiddleware(logger, core))
 }
 
 func isPublicHealthEndpoint(path string) bool {

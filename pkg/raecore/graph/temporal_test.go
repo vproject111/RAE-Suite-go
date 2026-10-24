@@ -57,3 +57,28 @@ func TestEntityResolutionMergesSynonyms(t *testing.T) {
 		t.Fatalf("expected node count reduction after entity resolution, got %d -> %d", res.OriginalNodeCount, res.ResolvedNodeCount)
 	}
 }
+
+func TestTemporalGraphRemoveNodeRemoveEdgeAndRestoreNotFound(t *testing.T) {
+	svc := NewTemporalGraphService()
+	t1 := time.Now().UTC().Add(-5 * time.Minute)
+	svc.RecordChange(GraphChange{Project: "p1", ChangeType: ChangeNodeAdded, SourceNode: "N1", Timestamp: t1})
+	svc.RecordChange(GraphChange{Project: "p1", ChangeType: ChangeNodeAdded, SourceNode: "N2", Timestamp: t1})
+	svc.RecordChange(GraphChange{Project: "p1", ChangeType: ChangeEdgeAdded, SourceNode: "N1", TargetNode: "N2", Timestamp: t1})
+	svc.RecordChange(GraphChange{Project: "other", ChangeType: ChangeNodeAdded, SourceNode: "OtherNode", Timestamp: t1})
+
+	t2 := time.Now().UTC()
+	svc.RecordChange(GraphChange{Project: "p1", ChangeType: ChangeEdgeRemoved, SourceNode: "N1", TargetNode: "N2", Timestamp: t2})
+	svc.RecordChange(GraphChange{Project: "p1", ChangeType: ChangeNodeRemoved, SourceNode: "N2", Timestamp: t2})
+
+	comp := svc.CompareGraphs("p1", t1, t2)
+	if len(comp.RemovedNodes) != 1 || comp.RemovedNodes[0] != "N2" {
+		t.Fatalf("expected N2 in RemovedNodes, got %+v", comp)
+	}
+	if CalculateDensity(1, 0) != 0.0 {
+		t.Fatalf("expected 0 density for single node")
+	}
+	if _, ok := svc.RestoreSnapshot("non-existent-snap"); ok {
+		t.Fatalf("expected false when restoring non-existent snapshot")
+	}
+}
+

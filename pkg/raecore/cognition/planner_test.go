@@ -61,3 +61,64 @@ func TestCognitivePlannerCouncilAndSwarmConsensus(t *testing.T) {
 		t.Fatalf("expected CONSENSUS_VETOED by rae-quality, got %+v", vetoed)
 	}
 }
+
+func TestCognitivePlannerAndCouncilEdgeCases(t *testing.T) {
+	if len(RegisteredPackageTypes()) == 0 {
+		t.Fatalf("expected non-empty RegisteredPackageTypes")
+	}
+	leaf := &ToTNode{StateID: "leaf"}
+	if leaf.SelectUCT(0) != leaf {
+		t.Fatalf("expected leaf node to return itself")
+	}
+	parent := &ToTNode{
+		StateID: "p",
+		Visits:  4,
+		Children: []*ToTNode{
+			{StateID: "c1", Visits: 2, Value: 1.5},
+			{StateID: "c2", Visits: 0, Value: 0},
+		},
+	}
+	if sel := parent.SelectUCT(0); sel.StateID != "c2" {
+		t.Fatalf("expected unvisited child c2 to be selected first, got %s", sel.StateID)
+	}
+
+	planner := NewCognitivePlanner()
+	if it := planner.DetermineIterations("UNKNOWN_RISK", "simple task"); it != 50 {
+		t.Fatalf("expected default 50 iterations for unknown risk class, got %d", it)
+	}
+	if prm := planner.EvaluateStepPRM("rm -rf / and drop table users", ""); prm >= 0.5 {
+		t.Fatalf("expected low PRM score for destructive step, got %f", prm)
+	}
+	planDefault := planner.CreatePlan("verify and assert safety", "", "")
+	if planDefault.RiskClass != "R3" {
+		t.Fatalf("expected default R3 risk class, got %s", planDefault.RiskClass)
+	}
+
+	selector := NewDynamicCouncilSelector(nil)
+	q2, err := selector.SelectCouncilQuorum("code_edit", 2, 0, 0)
+	if err != nil || len(q2) != 2 || q2[0].ProviderFamily == q2[1].ProviderFamily {
+		t.Fatalf("expected 2 diverse models for Tier 2, got %+v (err=%v)", q2, err)
+	}
+	if _, err := selector.SelectCouncilQuorum("non_existent_task", 1, 10, 1000); err == nil {
+		t.Fatalf("expected error for unsupported task class")
+	}
+	singleFamilySelector := NewDynamicCouncilSelector([]ModelSpec{
+		{ModelID: "m1", ProviderFamily: "same", QualityScore: 0.9, CostPer1M: 0.5, AvgLatencyMs: 500, SupportedTaskClasses: []string{"code_edit"}},
+		{ModelID: "m2", ProviderFamily: "same", QualityScore: 0.8, CostPer1M: 0.5, AvgLatencyMs: 500, SupportedTaskClasses: []string{"code_edit"}},
+	})
+	if _, err := singleFamilySelector.SelectCouncilQuorum("code_edit", 3, 10, 1000); err == nil {
+		t.Fatalf("expected insufficient diversity error for Tier 3 with single family")
+	}
+
+	consensus := NewSwarmConsensusEngine()
+	if res := consensus.EvaluateConsensus(nil); res.Status != "NO_VOTES" {
+		t.Fatalf("expected NO_VOTES on empty slice, got %+v", res)
+	}
+	rejected := consensus.EvaluateConsensus([]AgentVote{
+		{AgentRole: "custom-agent", Decision: "REJECT", Confidence: 0.95, EvidenceCount: 10},
+	})
+	if rejected.Status != "CONSENSUS_REJECTED" {
+		t.Fatalf("expected CONSENSUS_REJECTED, got %+v", rejected)
+	}
+}
+

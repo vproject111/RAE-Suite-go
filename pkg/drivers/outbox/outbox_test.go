@@ -47,3 +47,43 @@ func TestPersistentOutboxAndDeadLetterQueue(t *testing.T) {
 		t.Fatalf("expected 0 pending events after DEAD_LETTER reload, got %d", len(claimedAfterReload))
 	}
 }
+
+func TestPersistentOutboxFullCoverage(t *testing.T) {
+	if len(outbox.RegisteredPackageTypes()) == 0 {
+		t.Fatal("expected RegisteredPackageTypes")
+	}
+
+	ctx := context.Background()
+	ob := outbox.NewPersistentOutbox("", 0)
+	if ob.MaxAttempts != 3 {
+		t.Fatalf("expected default MaxAttempts 3, got %d", ob.MaxAttempts)
+	}
+
+	ev1 := &ports.OutboxEvent{EventType: "EV1"}
+	ev2 := &ports.OutboxEvent{EventType: "EV2"}
+	ev3 := &ports.OutboxEvent{ID: "ev-exceeded", EventType: "EV3", Attempts: 3}
+	_ = ob.EnqueueOutbox(ctx, ev1)
+	_ = ob.EnqueueOutbox(ctx, ev2)
+	_ = ob.EnqueueOutbox(ctx, ev3)
+
+	claimed, err := ob.ClaimPendingOutbox(ctx, 1)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("ClaimPendingOutbox limit=1 failed: %v, %v", claimed, err)
+	}
+	// Next claim processes ev2 and transitions ev3 (Attempts > MaxAttempts) to DEAD_LETTER
+	claimed2, _ := ob.ClaimPendingOutbox(ctx, 10)
+	if len(claimed2) != 1 {
+		t.Fatalf("expected 1 claimed event, got %d", len(claimed2))
+	}
+
+	if err := ob.MarkOutboxDelivered(ctx, claimed[0].ID); err != nil {
+		t.Fatalf("MarkOutboxDelivered failed: %v", err)
+	}
+	if err := ob.MarkOutboxDelivered(ctx, "nonexistent"); err == nil {
+		t.Fatal("expected error marking nonexistent outbox event delivered")
+	}
+	if _, err := ob.RequeueOrDeadLetter("nonexistent"); err == nil {
+		t.Fatal("expected error requeuing nonexistent outbox event")
+	}
+}
+
