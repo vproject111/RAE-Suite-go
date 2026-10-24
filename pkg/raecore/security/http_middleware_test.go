@@ -63,4 +63,25 @@ func TestWrapSecureHandlerAuthAndHeaders(t *testing.T) {
 	if recBearer.Code != http.StatusOK {
 		t.Fatalf("expected 200 with valid Bearer token, got %d", recBearer.Code)
 	}
+
+	// 5. OPTIONS request returns 204 NoContent
+	reqOpt := httptest.NewRequest(http.MethodOptions, "/v2/memories/", nil)
+	recOpt := httptest.NewRecorder()
+	handler.ServeHTTP(recOpt, reqOpt)
+	if recOpt.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for OPTIONS, got %d", recOpt.Code)
+	}
+
+	// 6. Fallback to RAE_MASTER_API_KEY when RAE_API_KEY is empty
+	_ = os.Unsetenv("RAE_API_KEY")
+	_ = os.Setenv("RAE_MASTER_API_KEY", "master-key-123")
+	defer func() { _ = os.Unsetenv("RAE_MASTER_API_KEY") }()
+	reqMaster := httptest.NewRequest(http.MethodPost, "/v2/memories/", nil)
+	reqMaster.Header.Set("X-API-Key", "master-key-123")
+	recMaster := httptest.NewRecorder()
+	handler.ServeHTTP(recMaster, reqMaster)
+	if recMaster.Code != http.StatusOK {
+		t.Fatalf("expected 200 with RAE_MASTER_API_KEY, got %d", recMaster.Code)
+	}
 }
+

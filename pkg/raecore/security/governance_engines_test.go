@@ -89,3 +89,80 @@ func TestGovernanceEnginesRulesPolicyRetentionAndBudget(t *testing.T) {
 		t.Fatalf("expected HARD_BLOCK_100_PERCENT, got %+v", b105)
 	}
 }
+
+func TestSecurityComprehensiveNegativeAndEdgeCases(t *testing.T) {
+	if len(RegisteredPackageTypes()) == 0 {
+		t.Fatalf("expected non-empty RegisteredPackageTypes")
+	}
+
+	// RulesEngine AddRule and ListRules
+	re := NewRulesEngine()
+	added := re.AddRule(ECARule{
+		Name:      "Custom Cost Alert",
+		EventType: "on_cost_threshold",
+		Action:    "emit_alert",
+	})
+	if added.RuleID == "" || !added.Enabled {
+		t.Fatalf("expected generated RuleID and Enabled=true, got %+v", added)
+	}
+	rules, hist := re.ListRules()
+	if len(rules) < 4 || len(hist) != 0 {
+		t.Fatalf("unexpected ListRules: len(rules)=%d len(hist)=%d", len(rules), len(hist))
+	}
+	// Evaluate with low importance (skip MinImportance) and mismatched class
+	_ = re.EvaluateEvent("on_memory_store", "m-low", 0.10, "public")
+
+	// PolicyVersioningService GetActive, ListVersions, Rollback failure
+	pvs := NewPolicyVersioningService()
+	act := pvs.GetActive("")
+	if act.Status != PolicyActive {
+		t.Fatalf("expected active default policy, got %+v", act)
+	}
+	_ = pvs.CreateVersion("", false, 0.9, 100, false) // Draft version
+	if len(pvs.ListVersions("")) < 2 {
+		t.Fatalf("expected at least 2 versions")
+	}
+	if _, ok := pvs.Rollback("unknown-policy", 1); ok {
+		t.Fatalf("expected Rollback on unknown policy to return false")
+	}
+	// GetActive on unknown policy fallback
+	fallbackPol := pvs.GetActive("non-existent")
+	if fallbackPol.PolicyID != "non-existent" {
+		t.Fatalf("unexpected fallback policy: %+v", fallbackPol)
+	}
+
+	// RetentionService ListDeletionAudits and empty subject match by tenant
+	store := &mockMemStore{}
+	_ = store.StoreMemory(context.Background(), &models.MemoryItem{
+		ID:       "t-mem-1",
+		TenantID: "tenant-wipe",
+		Content:  "data",
+	})
+	ret := NewRetentionService()
+	_ = ret.ExecuteRightToBeForgotten(context.Background(), store, "tenant-wipe", "")
+	if len(ret.ListDeletionAudits()) != 1 {
+		t.Fatalf("expected 1 deletion audit entry")
+	}
+
+	// BudgetService defaults & auto-init on CheckAndRecordSpend
+	bs := NewBudgetService()
+	bs.SetBudget("", 0, 0)
+	bNew := bs.CheckAndRecordSpend("new-tenant", 0.5, 100)
+	if !bNew.Allowed || bNew.Status != BudgetStatusOK {
+		t.Fatalf("expected OK status for new-tenant small spend, got %+v", bNew)
+	}
+
+	// ContextProvenanceService fallbacks and non-compliant uncited claims
+	prov := NewContextProvenanceService()
+	autoDec := prov.RecordDecision("", "agent-1", "TEST", "out", []string{"unverified-claim-id"})
+	lin := prov.GetDecisionLineage("non-existent-dec-id")
+	if lin["verified"] != true {
+		t.Fatalf("expected fallback lineage verification, got %+v", lin)
+	}
+	aud := prov.AuditContextQuality("non-existent-ctx-id")
+	if aud.ISO42001Compliant || len(aud.UncitedClaimIDs) == 0 {
+		t.Fatalf("expected non-compliant audit for uncited claim, got %+v (dec=%+v)", aud, autoDec)
+	}
+	_ = prov.CreateDecisionContext("p", "q", []ContextSource{{SourceID: "s1", TrustScore: 0, Weight: 0}})
+}
+

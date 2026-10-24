@@ -715,11 +715,17 @@ func InjectW3CTraceContext(traceID, spanID string, sampled bool) string {
 	} else {
 		cleanTrace = cleanTrace[:32]
 	}
+	if cleanTrace == strings.Repeat("0", 32) {
+		cleanTrace = strings.Repeat("a", 32)
+	}
 	cleanSpan := strings.ToLower(nonHexRegex.ReplaceAllString(spanID, ""))
 	if len(cleanSpan) < 16 {
 		cleanSpan = (cleanSpan + strings.Repeat("b", 16))[:16]
 	} else {
 		cleanSpan = cleanSpan[:16]
+	}
+	if cleanSpan == strings.Repeat("0", 16) {
+		cleanSpan = strings.Repeat("b", 16)
 	}
 	flags := "00"
 	if sampled {

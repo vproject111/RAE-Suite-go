@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -11,11 +11,18 @@ import (
 	"github.com/vproject111/RAE-Suite-go/pkg/drivers/sqlstore"
 	raemath "github.com/vproject111/RAE-Suite-go/pkg/raecore/math"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/models"
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/ops"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/security"
 	"github.com/vproject111/RAE-Suite-go/services/memory"
 )
 
-func main() {
+var (
+	listenAndServe = http.ListenAndServe
+	exitFunc       = os.Exit
+)
+
+func buildHandler(ctx context.Context, logger *slog.Logger) http.Handler {
+	_ = os.Setenv("RAE_SERVICE_NAME", "rae-memory")
 	guard := security.NewHardFramesGuard("")
 	dataDir := os.Getenv("RAE_DATA_DIR")
 	if dataDir == "" {
@@ -29,20 +36,38 @@ func main() {
 		baseStore = memorystore.NewUnifiedStore(raemath.NewMathController(models.MathL3), guard)
 	}
 	hydrated := baseStore.EnableLiveBackends()
-	log.Printf("RAE-Memory live backend initialization completed (hydrated %d records from PostgreSQL)", hydrated)
+	if logger != nil {
+		logger.InfoContext(ctx, "live_backend_initialized", slog.String("event", "storage_hydrated"), slog.Int("hydrated_records", hydrated))
+	}
 
 	svc := memory.NewService(baseStore, baseStore, guard)
-	svc.StartBackgroundWorkers(context.Background(), 60*time.Second)
+	svc.StartBackgroundWorkers(ctx, 60*time.Second)
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = os.Getenv("RAE_PORT")
-	}
-	if port == "" {
-		port = "8000"
-	}
 	mux := http.NewServeMux()
 	svc.RegisterRoutes(mux)
-	log.Printf("RAE-Memory 8-Layer Engine (Go Native v5.3.2) listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, security.WrapSecureHandler(mux)))
+	return security.WrapSecureHandler(mux)
 }
+
+func run(ctx context.Context, addr string) error {
+	if addr == "" {
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = os.Getenv("RAE_PORT")
+		}
+		if port == "" {
+			port = "8000"
+		}
+		addr = ":" + port
+	}
+	logger := ops.NewCanonicalLogger("rae-memory", os.Getenv("RAE_ENV"), "5.3.3", os.Stdout, slog.LevelInfo)
+	handler := buildHandler(ctx, logger)
+	logger.InfoContext(ctx, "service_listening", slog.String("event", "service_startup"), slog.String("addr", addr))
+	return listenAndServe(addr, handler)
+}
+
+func main() {
+	if err := run(context.Background(), ""); err != nil {
+		exitFunc(1)
+	}
+}
+

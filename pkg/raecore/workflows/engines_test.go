@@ -153,3 +153,125 @@ func TestWorkflowsA2AScrubberAndAutonomyEngines(t *testing.T) {
 		t.Fatalf("expected MESH_NODE for 64GB+GPU, got %+v", prof)
 	}
 }
+
+func TestWorkflowsAdditionalBranchesAndFailureModes(t *testing.T) {
+	if len(RegisteredPackageTypes()) == 0 {
+		t.Fatalf("expected non-empty RegisteredPackageTypes")
+	}
+	// Saga success & compensation error
+	sagaOK := NewSagaCoordinator()
+	sagaOK.AddStep("s1", func() (any, error) { return "ok", nil }, nil)
+	if res := sagaOK.ExecuteSaga(); res.Status != "SAGA_COMPLETED" {
+		t.Fatalf("expected SAGA_COMPLETED, got %+v", res)
+	}
+	sagaCompFail := NewSagaCoordinator()
+	sagaCompFail.AddStep("s1", func() (any, error) { return "ok", nil }, func() error { return fmt.Errorf("comp failed") })
+	sagaCompFail.AddStep("s2", func() (any, error) { return nil, fmt.Errorf("step2 failed") }, nil)
+	if res := sagaCompFail.ExecuteSaga(); res.Status != "SAGA_COMPENSATION_FAILED" {
+		t.Fatalf("expected SAGA_COMPENSATION_FAILED, got %+v", res)
+	}
+
+	// StreamingFunctionComposer nil map, unknown tool, tool error
+	compNil := NewStreamingFunctionComposer(nil)
+	resUnk := compNil.PipeSteps([]string{`STEP: {"tool":"missing","args":{}}`})
+	if len(resUnk) != 1 || resUnk[0].Status != "FAILED" {
+		t.Fatalf("expected FAILED for unknown tool, got %+v", resUnk)
+	}
+	compErr := NewStreamingFunctionComposer(map[string]ToolHandler{
+		"fail_tool": func(args map[string]interface{}) (interface{}, error) {
+			return nil, fmt.Errorf("tool boom")
+		},
+	})
+	resErr := compErr.PipeSteps([]string{`STEP: {"tool":"fail_tool","args":{"k":"v"}}`})
+	if len(resErr) != 1 || resErr[0].Status != "ERROR" {
+		t.Fatalf("expected ERROR for failing tool, got %+v", resErr)
+	}
+
+	// SpeculativeToolExecutor with custom failing runner, >3 commands, empty command, non-whitelisted command
+	failSpec := NewSpeculativeToolExecutor(func(cmd string) (string, error) {
+		return "", fmt.Errorf("runner error")
+	})
+	if failSpec.IsCommandSafe("") || failSpec.IsCommandSafe("python3 script.py") {
+		t.Fatalf("expected empty or python3 command to be unsafe")
+	}
+	specMap := failSpec.ExecuteSpeculatively([]string{"ls", "cat file", "wc -l", "head -n 5"})
+	if len(specMap) != 3 || specMap["ls"].Status != "FAILED" {
+		t.Fatalf("expected capped 3 commands with FAILED runner status, got %+v", specMap)
+	}
+
+	// ClaimCheckManager small payload pass-through, default dir, and malformed/missing pointers
+	defClaim := NewClaimCheckManager("")
+	if small := defClaim.OffloadIfNeeded("tiny"); small != "tiny" {
+		t.Fatalf("expected small payload to pass through unchanged")
+	}
+	if pass, err := defClaim.Retrieve("plain text"); err != nil || pass != "plain text" {
+		t.Fatalf("expected plain text retrieve to pass through")
+	}
+	if _, err := defClaim.Retrieve("<CLAIM_CHECK:malformed>"); err == nil {
+		t.Fatalf("expected error for malformed claim check pointer")
+	}
+	if _, err := defClaim.Retrieve("<CLAIM_CHECK:deadbeef:100>"); err == nil {
+		t.Fatalf("expected error for missing claim check blob")
+	}
+
+	// SafeReplayEngine AUDIT_READ_ONLY, EXECUTE_AUTHORIZED (side effect vs idempotent), and unsupported mode
+	replay := NewSafeReplayEngine()
+	if aud, err := replay.ReplayStep(map[string]interface{}{"action": "read"}, ReplayAuditReadOnly, ""); err != nil || aud["status"] != "AUDITED" {
+		t.Fatalf("expected AUDITED, got %+v (%v)", aud, err)
+	}
+	if blk, err := replay.ReplayStep(map[string]interface{}{"step_id": "s1", "side_effect": true}, ReplayExecuteAuthorized, "tok"); err != nil || blk["status"] != "BLOCKED_SIDE_EFFECT" {
+		t.Fatalf("expected BLOCKED_SIDE_EFFECT, got %+v (%v)", blk, err)
+	}
+	if reex, err := replay.ReplayStep(map[string]interface{}{"step_id": "s2", "side_effect": false}, ReplayExecuteAuthorized, "tok"); err != nil || reex["status"] != "RE_EXECUTED" {
+		t.Fatalf("expected RE_EXECUTED, got %+v (%v)", reex, err)
+	}
+	if _, err := replay.ReplayStep(map[string]interface{}{}, ReplayMode("INVALID"), "tok"); err == nil {
+		t.Fatalf("expected error on unsupported replay mode")
+	}
+
+	// A2AProtocolAdapter negative branches: unknown sender, default alg/timestamp/nonce, bad alg, clock skew, bad sig
+	a2a := NewA2AProtocolAdapter()
+	if _, err := a2a.SignMessage("unknown", "rec", "", "", 0, nil); err == nil {
+		t.Fatalf("expected error signing for unknown sender")
+	}
+	a2a.RegisterAgent("a1", "sec1")
+	envDef, err := a2a.SignMessage("a1", "a2", "", "", 0, map[string]interface{}{"x": 1})
+	if err != nil || envDef.Algorithm != "HS256" || envDef.Nonce == "" {
+		t.Fatalf("unexpected default SignMessage: %+v (%v)", envDef, err)
+	}
+	badAlg := envDef
+	badAlg.Algorithm = "NONE"
+	if _, err := a2a.VerifyAndReceive(badAlg); err == nil {
+		t.Fatalf("expected error on disallowed algorithm")
+	}
+	skewEnv := envDef
+	skewEnv.Timestamp = time.Now().Unix() - 1000
+	if _, err := a2a.VerifyAndReceive(skewEnv); err == nil {
+		t.Fatalf("expected error on clock skew")
+	}
+	unregEnv := envDef
+	unregEnv.SenderID = "ghost"
+	if _, err := a2a.VerifyAndReceive(unregEnv); err == nil {
+		t.Fatalf("expected error on unregistered sender")
+	}
+	badSigEnv := envDef
+	badSigEnv.Signature = "0000"
+	if _, err := a2a.VerifyAndReceive(badSigEnv); err == nil {
+		t.Fatalf("expected error on signature mismatch")
+	}
+
+	// ShadowEvaluator unknown guardrail & high false positive rate, plus ThinDeviceRuntime laptop profile
+	shadow := NewShadowEvaluator()
+	if _, err := shadow.PromoteGuardrail("missing", 100, 0); err == nil {
+		t.Fatalf("expected error for unknown guardrail")
+	}
+	g := shadow.MineFailure("panic")
+	if _, err := shadow.PromoteGuardrail(g.RuleID, 80.0, 0.05); err == nil {
+		t.Fatalf("expected error when falsePositiveRate >= 0.001")
+	}
+	rt := NewThinDeviceRuntime()
+	if prof := rt.DetectHardwareProfile(8192, false); prof.Profile != "THIN_LAPTOP" {
+		t.Fatalf("expected THIN_LAPTOP for 8GB RAM, got %+v", prof)
+	}
+}
+

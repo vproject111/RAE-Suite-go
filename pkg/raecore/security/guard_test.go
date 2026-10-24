@@ -44,4 +44,21 @@ func TestHardFramesGuardAndAdmissionPolicy(t *testing.T) {
 	if err := guard.ValidateProjectRelativePath("pkg/raecore/models.go"); err != nil {
 		t.Fatalf("expected relative path to pass, got %v", err)
 	}
+
+	// Negative tests for Guard: default secret, mesh transfer, epistemic grace period, short ciphertext, HMAC
+	defGuard := NewHardFramesGuard("")
+	sig := defGuard.SignTokenHMAC("payload-123")
+	if !defGuard.VerifyTokenHMAC("payload-123", sig) || defGuard.VerifyTokenHMAC("payload-123", "bad-sig") {
+		t.Fatalf("unexpected HMAC verification result")
+	}
+	if _, err := defGuard.DecryptAESGCM([]byte("short")); err == nil {
+		t.Fatalf("expected error on short ciphertext")
+	}
+	if err := defGuard.ValidateMeshTransfer(models.MemoryItem{Layer: models.LayerWorking}); err != ErrRestrictedMeshEgress {
+		t.Fatalf("expected ErrRestrictedMeshEgress for working layer, got %v", err)
+	}
+	if err := defGuard.ValidateMeshTransfer(models.MemoryItem{Layer: models.LayerSemantic, InfoClass: models.InfoPublic}); err != nil {
+		t.Fatalf("expected public semantic item to pass mesh transfer, got %v", err)
+	}
 }
+

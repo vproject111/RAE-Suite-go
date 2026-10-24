@@ -1,23 +1,37 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 
+	"github.com/vproject111/RAE-Suite-go/pkg/raecore/ops"
 	"github.com/vproject111/RAE-Suite-go/pkg/raecore/security"
 	"github.com/vproject111/RAE-Suite-go/services/quality"
 )
 
-func main() {
+var (
+	listenAndServe = http.ListenAndServe
+	exitFunc       = os.Exit
+)
+
+func buildHandler() (*quality.Service, http.Handler) {
+	_ = os.Setenv("RAE_SERVICE_NAME", "rae-quality")
 	svc := quality.NewService()
+	mux := http.NewServeMux()
+	svc.RegisterRoutes(mux)
+	return svc, security.WrapSecureHandler(mux)
+}
+
+func run(ctx context.Context, addr string) error {
+	svc, handler := buildHandler()
 	if len(os.Args) > 1 && os.Args[1] == "check" {
 		code := ""
 		if len(os.Args) > 2 {
-			b, err := os.ReadFile(os.Args[2])
-			if err == nil {
+			if b, err := os.ReadFile(os.Args[2]); err == nil {
 				code = string(b)
 			}
 		}
@@ -25,26 +39,35 @@ func main() {
 		out, _ := json.MarshalIndent(rep, "", "  ")
 		fmt.Println(string(out))
 		if !rep.Passed {
-			os.Exit(1)
+			exitFunc(1)
 		}
-		return
+		return nil
 	}
 	if len(os.Args) > 2 && (os.Args[1] == "scan-dir" || os.Args[1] == "-audit" || os.Args[1] == "--audit") {
 		res, err := svc.GatewayV2.ScanRepositoryDir(os.Args[2])
 		if err != nil {
-			log.Fatalf("scan-dir failed: %v", err)
+			return fmt.Errorf("scan-dir failed: %w", err)
 		}
 		out, _ := json.MarshalIndent(res, "", "  ")
 		fmt.Println(string(out))
-		return
+		return nil
 	}
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8010"
+	if addr == "" {
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "8010"
+		}
+		addr = ":" + port
 	}
-	mux := http.NewServeMux()
-	svc.RegisterRoutes(mux)
-	log.Printf("RAE-Quality (Go Native v5.3.2) listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, security.WrapSecureHandler(mux)))
+	logger := ops.NewCanonicalLogger("rae-quality", os.Getenv("RAE_ENV"), "5.3.3", os.Stdout, slog.LevelInfo)
+	logger.InfoContext(ctx, "service_listening", slog.String("event", "service_startup"), slog.String("addr", addr))
+	return listenAndServe(addr, handler)
 }
+
+func main() {
+	if err := run(context.Background(), ""); err != nil {
+		exitFunc(1)
+	}
+}
+
