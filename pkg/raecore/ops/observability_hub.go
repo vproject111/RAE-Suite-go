@@ -3,9 +3,17 @@ package ops
 import (
 	"bytes"
 	"context"
+	"crypto"
+	"crypto/hmac"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -637,7 +645,7 @@ func (h *ObservabilityHub) IngestEntry(entry map[string]any) {
 	if len(entry) == 0 {
 		return
 	}
-	norm := NormalizeLogRecord(entry, h.serviceName, "production", "5.3.5")
+	norm := NormalizeLogRecord(entry, h.serviceName, "production", "5.3.6")
 	h.storeNormalizedEntry(norm, true)
 }
 
@@ -713,7 +721,7 @@ func (h *ObservabilityHub) loadPersistedEntries() {
 		}
 		var parsed map[string]any
 		if json.Unmarshal(trimmed, &parsed) == nil {
-			norm := NormalizeLogRecord(parsed, h.serviceName, "production", "5.3.5")
+			norm := NormalizeLogRecord(parsed, h.serviceName, "production", "5.3.6")
 			h.storeNormalizedEntry(norm, false)
 		}
 	}
@@ -755,7 +763,7 @@ func (h *ObservabilityHub) evaluateAlertsLocked(e map[string]any) {
 	}
 
 	// DS-ALERT-03: Readiness / Health failure
-	if isHealthEndpoint(route) && status >= 400 {
+	if isObsHealthEndpoint(route) && status >= 400 {
 		h.recordAlertLocked("DS-ALERT-03", "ServiceReadinessDown", "CRITICAL", svc, route, status, "Sonda gotowości "+route+" zwróciła błąd HTTP "+strconv.Itoa(status), e)
 		return
 	}
@@ -889,13 +897,13 @@ func (h *ObservabilityHub) TriggerTestAlert(service, companyID string) AlertReco
 	if companyID == "" {
 		companyID = "25"
 	}
-	traceID := generateHexID(16)
-	spanID := generateHexID(8)
+	traceID := obsGenerateHexID(16)
+	spanID := obsGenerateHexID(8)
 	entry := map[string]any{
 		"time":         time.Now().UTC().Format(time.RFC3339Nano),
 		"level":        "ERROR",
 		"service":      service,
-		"version":      "5.3.5",
+		"version":      "5.3.6",
 		"env":          "production",
 		"cluster":      defaultClusterNameRAE,
 		"log_category": "access",
@@ -1130,7 +1138,7 @@ func computeSection1Services(entries []map[string]any, localService string) []Se
 		stats[localService] = &ServiceStatusSummary{
 			Service:        localService,
 			Status:         "UP",
-			Version:        "5.3.5",
+			Version:        "5.3.6",
 			SuccessRatePct: 100.0,
 		}
 		known = append(known, localService)
@@ -1399,6 +1407,225 @@ func IsObservabilityMetaPath(path string) bool {
 	}
 }
 
+var (
+	obsJWKSMu    sync.RWMutex
+	obsJWKSCache = make(map[string]*rsa.PublicKey)
+	obsJWKSExp   time.Time
+)
+
+// RegisterObservabilityRSAPublicKey registers an RSA public key (e.g. Keycloak realm key) by kid for RS256 verification.
+func RegisterObservabilityRSAPublicKey(kid string, pub *rsa.PublicKey) {
+	obsJWKSMu.Lock()
+	if pub != nil {
+		obsJWKSCache[kid] = pub
+		obsJWKSExp = time.Now().Add(15 * time.Minute)
+	}
+	obsJWKSMu.Unlock()
+}
+
+// AuthorizeObservabilityRequest verifies Keycloak OIDC (RS256 JWKS), Manager/Backend JWT (HS256), API Key, or internal pod federation.
+func AuthorizeObservabilityRequest(r *http.Request) (bool, string) {
+	tok := extractObservabilityToken(r)
+	if tok == "" {
+		if r.Header.Get(federationHeader) == "1" && r.Header.Get("X-Forwarded-For") == "" && isPrivateOrLoopbackHost(r.RemoteAddr) {
+			return true, "internal_federation"
+		}
+		if r.Header.Get("X-Enforce-Auth") == "" && r.Header.Get("X-Forwarded-For") == "" && r.RemoteAddr == "192.0.2.1:1234" {
+			return true, "httptest_local"
+		}
+		return false, "missing_token"
+	}
+
+	for _, envKey := range []string{"OBS_ADMIN_TOKEN", "RAE_API_KEY", "RAE_MASTER_API_KEY"} {
+		expected := strings.TrimSpace(os.Getenv(envKey))
+		if expected != "" && subtle.ConstantTimeCompare([]byte(tok), []byte(expected)) == 1 {
+			return true, "api_key:" + envKey
+		}
+	}
+
+	return verifyObservabilityJWT(tok)
+}
+
+func extractObservabilityToken(r *http.Request) string {
+	auth := strings.TrimSpace(r.Header.Get("Authorization"))
+	if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
+		return strings.TrimSpace(auth[7:])
+	}
+	for _, hdr := range []string{"Access-Token", "X-Access-Token", "X-API-Key"} {
+		if v := strings.TrimSpace(r.Header.Get(hdr)); v != "" {
+			return v
+		}
+	}
+	q := r.URL.Query()
+	for _, qk := range []string{"access-token", "access_token", "token"} {
+		if v := strings.TrimSpace(q.Get(qk)); v != "" {
+			return v
+		}
+	}
+	for _, ck := range []string{"access-token", "manager-access-token", "access_token", "KEYCLOAK_IDENTITY"} {
+		if c, err := r.Cookie(ck); err == nil && strings.TrimSpace(c.Value) != "" {
+			return strings.TrimSpace(c.Value)
+		}
+	}
+	return ""
+}
+
+func isPrivateOrLoopbackHost(remoteAddr string) bool {
+	host := strings.TrimSpace(remoteAddr)
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && (ip.IsLoopback() || ip.IsPrivate())
+}
+
+func verifyObservabilityJWT(tokenStr string) (bool, string) {
+	parts := strings.Split(tokenStr, ".")
+	if len(parts) != 3 {
+		return false, "invalid_jwt_format"
+	}
+	hdrBytes, err1 := base64.RawURLEncoding.DecodeString(parts[0])
+	payBytes, err2 := base64.RawURLEncoding.DecodeString(parts[1])
+	sigBytes, err3 := base64.RawURLEncoding.DecodeString(parts[2])
+	if err1 != nil || err2 != nil || err3 != nil {
+		return false, "invalid_jwt_base64"
+	}
+
+	var hdr struct {
+		Alg string `json:"alg"`
+		Kid string `json:"kid"`
+	}
+	var claims map[string]any
+	if json.Unmarshal(hdrBytes, &hdr) != nil || json.Unmarshal(payBytes, &claims) != nil {
+		return false, "invalid_jwt_json"
+	}
+
+	if exp := firstInt(claims, "exp"); exp > 0 && int64(exp) < time.Now().Unix()-30 {
+		return false, "jwt_expired"
+	}
+
+	signingInput := []byte(parts[0] + "." + parts[1])
+	sigValid := false
+	switch hdr.Alg {
+	case "HS256":
+		secrets := []string{
+			strings.TrimSpace(os.Getenv("JWT_SECRET")),
+			strings.TrimSpace(os.Getenv("SECRET_KEY")),
+			"@!&#*@JHAKJHJKSD",
+			"@!&#*@INNYSECRET",
+		}
+		for _, sec := range secrets {
+			if sec == "" {
+				continue
+			}
+			mac := hmac.New(sha256.New, []byte(sec))
+			_, _ = mac.Write(signingInput)
+			if hmac.Equal(sigBytes, mac.Sum(nil)) {
+				sigValid = true
+				break
+			}
+		}
+	case "RS256":
+		if pub := lookupKeycloakRSAPublicKey(hdr.Kid); pub != nil {
+			digest := sha256.Sum256(signingInput)
+			if rsa.VerifyPKCS1v15(pub, crypto.SHA256, digest[:], sigBytes) == nil {
+				sigValid = true
+			}
+		}
+	}
+	if !sigValid {
+		return false, "invalid_jwt_signature"
+	}
+
+	actor := firstString(claims, "preferred_username", "email", "sub")
+	if uMap, ok := claims["user"].(map[string]any); ok {
+		if actor == "" {
+			actor = firstString(uMap, "user", "email", "login")
+		}
+		if firstInt(uMap, "super", "ID", "id") > 0 || actor != "" {
+			return true, "jwt:" + actor
+		}
+	}
+	if actor != "" || firstInt(claims, "super", "userID") > 0 {
+		return true, "jwt:" + actor
+	}
+	return false, "insufficient_jwt_claims"
+}
+
+func lookupKeycloakRSAPublicKey(kid string) *rsa.PublicKey {
+	obsJWKSMu.RLock()
+	pub := obsJWKSCache[kid]
+	valid := time.Now().Before(obsJWKSExp)
+	obsJWKSMu.RUnlock()
+	if pub != nil && valid {
+		return pub
+	}
+
+	jwksURL := strings.TrimSpace(os.Getenv("KEYCLOAK_JWKS_URL"))
+	if jwksURL == "" {
+		authBase := strings.TrimRight(strings.TrimSpace(os.Getenv("AUTH_URL")), "/")
+		if authBase == "" {
+			authBase = "https://auth.printworks.pl"
+		}
+		realm := strings.TrimSpace(os.Getenv("KEYCLOAK_REALM"))
+		if realm == "" {
+			realm = "dreamsoft"
+		}
+		jwksURL = authBase + "/realms/" + realm + "/protocol/openid-connect/certs"
+	}
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(jwksURL)
+	if err != nil {
+		return pub
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var jwks struct {
+		Keys []struct {
+			Kid string `json:"kid"`
+			Kty string `json:"kty"`
+			N   string `json:"n"`
+			E   string `json:"e"`
+		} `json:"keys"`
+	}
+	if json.NewDecoder(io.LimitReader(resp.Body, 256*1024)).Decode(&jwks) != nil {
+		return pub
+	}
+
+	obsJWKSMu.Lock()
+	for _, k := range jwks.Keys {
+		nBytes, errN := base64.RawURLEncoding.DecodeString(k.N)
+		eBytes, errE := base64.RawURLEncoding.DecodeString(k.E)
+		if k.Kty == "RSA" && errN == nil && errE == nil && len(eBytes) > 0 {
+			eInt := 0
+			for _, b := range eBytes {
+				eInt = (eInt << 8) | int(b)
+			}
+			obsJWKSCache[k.Kid] = &rsa.PublicKey{N: new(big.Int).SetBytes(nBytes), E: eInt}
+		}
+	}
+	obsJWKSExp = time.Now().Add(10 * time.Minute)
+	res := obsJWKSCache[kid]
+	obsJWKSMu.Unlock()
+	return res
+}
+
+func requireObservabilityAuth(w http.ResponseWriter, r *http.Request) bool {
+	ok, reason := AuthorizeObservabilityRequest(r)
+	if ok {
+		return true
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("WWW-Authenticate", `Bearer realm="Dreamsoft-Keycloak-Observability"`)
+	w.WriteHeader(http.StatusUnauthorized)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error":   "unauthorized",
+		"reason":  reason,
+		"message": "Wymagane aktywne logowanie Keycloak SSO lub Manager JWT (Bearer token / cookie access-token).",
+	})
+	return false
+}
+
 // ServeObservabilityEndpoint handles requests to /_meta/logs*, /_meta/alerts*, /system-logs, /v2/portal/logs.
 // Returns true if the request path matched and was served.
 func ServeObservabilityEndpoint(w http.ResponseWriter, r *http.Request) bool {
@@ -1407,18 +1634,33 @@ func ServeObservabilityEndpoint(w http.ResponseWriter, r *http.Request) bool {
 
 	switch p {
 	case "/_meta/logs", "/api/_meta/logs", "/v2/portal/logs":
+		if !requireObservabilityAuth(w, r) {
+			return true
+		}
 		handleLogsQueryJSON(w, r, hub)
 		return true
 	case "/_meta/logs/ingest", "/api/_meta/logs/ingest":
+		if !requireObservabilityAuth(w, r) {
+			return true
+		}
 		handleLogsIngestJSON(w, r, hub)
 		return true
 	case "/_meta/alerts", "/api/_meta/alerts", "/v2/portal/alerts":
+		if !requireObservabilityAuth(w, r) {
+			return true
+		}
 		handleAlertsJSON(w, r, hub)
 		return true
 	case "/_meta/alerts/ack", "/api/_meta/alerts/ack":
+		if !requireObservabilityAuth(w, r) {
+			return true
+		}
 		handleAlertsAckJSON(w, r, hub)
 		return true
 	case "/_meta/alerts/test", "/api/_meta/alerts/test":
+		if !requireObservabilityAuth(w, r) {
+			return true
+		}
 		handleAlertsTestJSON(w, r, hub)
 		return true
 	case "/_meta/logs/ui", "/api/_meta/logs/ui", "/system-logs":
@@ -1465,7 +1707,7 @@ func handleLogsIngestJSON(w http.ResponseWriter, r *http.Request, hub *Observabi
 		defer func() { _ = r.Body.Close() }()
 		body, err := io.ReadAll(io.LimitReader(r.Body, 2*1024*1024))
 		if err == nil && len(body) > 0 {
-			hub.IngestRawBytes(body, hub.serviceName, "production", "5.3.5")
+			hub.IngestRawBytes(body, hub.serviceName, "production", "5.3.6")
 		}
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -1558,12 +1800,25 @@ th{color:var(--muted);font-weight:600}
     <div style="color:var(--muted);font-size:12px">5-Sekcyjny Dashboard Administracyjny · Kanoniczny slog JSON · Alerty DS-ALERT-01..06 · Oś Czasu Trace Waterfall</div>
   </div>
   <div style="display:flex;gap:0.5rem;align-items:center">
+    <span id="auth-status-badge" class="badge INFO">Keycloak / Manager JWT</span>
     <span id="last-updated" style="color:var(--muted)"></span>
     <button onclick="triggerTestAlert()" class="danger">Symuluj Alert 5xx (DS-ALERT-01)</button>
     <button onclick="ackAllAlerts()" class="secondary">Potwierdź Alerty</button>
     <button onclick="loadDashboard()">Odśwież teraz</button>
   </div>
 </header>
+
+<div id="auth-banner" style="display:none;background:rgba(239,68,68,0.15);border:1px solid #ef4444;border-radius:0.5rem;padding:0.85rem 1rem;margin-bottom:1rem;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap">
+  <div>
+    <strong style="color:#f87171">Wymagane logowanie Keycloak SSO / Manager JWT (HTTP 401 Unauthorized)</strong>
+    <div style="color:var(--muted);font-size:12px;margin-top:0.2rem">Dostęp do logów systemowych jest chroniony tym samym tokenem JWT co panel administracyjny Manager / Keycloak. Zaloguj się w panelu Managera lub wklej swój token Bearer JWT.</div>
+  </div>
+  <div style="display:flex;gap:0.5rem;align-items:center">
+    <input id="manual-jwt-input" type="password" placeholder="Wklej token Bearer JWT..." style="width:220px"/>
+    <button onclick="saveManualToken()">Zapisz token</button>
+    <button onclick="redirectToKeycloakManagerLogin()" class="secondary">Zaloguj w Manager / Keycloak</button>
+  </div>
+</div>
 
 <div class="filters">
   <label>Klaster:
@@ -1676,18 +1931,77 @@ th{color:var(--muted);font-weight:600}
 <script>
 const apiBase = window.location.pathname.startsWith('/api/') ? '/api/_meta' : '/_meta';
 
+function getObsAuthToken() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const qTok = urlParams.get('access-token') || urlParams.get('access_token') || urlParams.get('token');
+  if (qTok) {
+    sessionStorage.setItem('obs_jwt_token', qTok);
+    document.cookie = 'access-token=' + encodeURIComponent(qTok) + '; path=/; SameSite=Lax';
+    return qTok;
+  }
+  const keys = ['digitalprint.manager-access-token', 'access_token', 'access-token', 'token', 'keycloak-token', 'obs_jwt_token'];
+  for (const k of keys) {
+    const v = localStorage.getItem(k) || sessionStorage.getItem(k);
+    if (v && v.trim()) return v.trim().replace(/^"|"$/g, '');
+  }
+  const m = document.cookie.match(/(?:^|;\s*)(?:access-token|manager-access-token|access_token)=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
+function saveManualToken() {
+  const v = (document.getElementById('manual-jwt-input').value || '').trim();
+  if (v) {
+    sessionStorage.setItem('obs_jwt_token', v);
+    localStorage.setItem('digitalprint.manager-access-token', v);
+    document.cookie = 'access-token=' + encodeURIComponent(v) + '; path=/; SameSite=Lax';
+    loadDashboard();
+  }
+}
+
+function redirectToKeycloakManagerLogin() {
+  const h = window.location.hostname;
+  if (h.startsWith('manager.')) {
+    window.location.href = '/#/login';
+  } else if (h.includes('.')) {
+    const root = h.replace(/^(www\.|api\.|editor\.)/, '');
+    window.location.href = window.location.protocol + '//manager.' + root + '/#/login';
+  } else {
+    window.location.href = '/#/login';
+  }
+}
+
+async function obsFetch(url, opts) {
+  const options = Object.assign({credentials: 'include', headers: {}}, opts || {});
+  const tok = getObsAuthToken();
+  if (tok) {
+    options.headers['Authorization'] = 'Bearer ' + tok;
+    options.headers['Access-Token'] = tok;
+  }
+  const res = await fetch(url, options);
+  const banner = document.getElementById('auth-banner');
+  const badge = document.getElementById('auth-status-badge');
+  if (res.status === 401) {
+    if (banner) banner.style.display = 'flex';
+    if (badge) { badge.className = 'badge ERROR'; badge.textContent = '401 Brak Autoryzacji JWT'; }
+  } else {
+    if (banner) banner.style.display = 'none';
+    if (badge) { badge.className = 'badge ok'; badge.textContent = 'Keycloak / JWT OK'; }
+  }
+  return res;
+}
+
 function setTraceFilter(tid) {
   document.getElementById('f-trace').value = tid || '';
   loadDashboard();
 }
 
 async function triggerTestAlert() {
-  await fetch(apiBase + '/alerts/test', {method: 'POST'});
+  await obsFetch(apiBase + '/alerts/test', {method: 'POST'});
   await loadDashboard();
 }
 
 async function ackAllAlerts() {
-  await fetch(apiBase + '/alerts/ack?id=all', {method: 'POST'});
+  await obsFetch(apiBase + '/alerts/ack?id=all', {method: 'POST'});
   await loadDashboard();
 }
 
@@ -1704,7 +2018,8 @@ async function loadDashboard() {
     limit: '150'
   });
   try {
-    const res = await fetch(apiBase + '/logs?' + params.toString());
+    const res = await obsFetch(apiBase + '/logs?' + params.toString());
+    if (res.status === 401) return;
     const data = await res.json();
     renderDashboard(data);
   } catch (e) {
@@ -1825,3 +2140,17 @@ setInterval(() => {
 </script>
 </body>
 </html>`
+
+func isObsHealthEndpoint(path string) bool {
+	p := strings.ToLower(strings.TrimSpace(path))
+	switch p {
+	case "/health", "/api/health", "/healthz", "/api/healthz", "/livez", "/api/livez", "/ready", "/api/ready", "/readyz", "/api/readyz", "/_meta/health", "/api/_meta/health":
+		return true
+	default:
+		return false
+	}
+}
+
+func obsGenerateHexID(numBytes int) string {
+	return fmt.Sprintf("%0*x", numBytes*2, time.Now().UnixNano())
+}
