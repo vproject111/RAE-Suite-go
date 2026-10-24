@@ -645,7 +645,7 @@ func (h *ObservabilityHub) IngestEntry(entry map[string]any) {
 	if len(entry) == 0 {
 		return
 	}
-	norm := NormalizeLogRecord(entry, h.serviceName, "production", "5.3.6")
+	norm := NormalizeLogRecord(entry, h.serviceName, "production", "5.3.7")
 	h.storeNormalizedEntry(norm, true)
 }
 
@@ -721,7 +721,7 @@ func (h *ObservabilityHub) loadPersistedEntries() {
 		}
 		var parsed map[string]any
 		if json.Unmarshal(trimmed, &parsed) == nil {
-			norm := NormalizeLogRecord(parsed, h.serviceName, "production", "5.3.6")
+			norm := NormalizeLogRecord(parsed, h.serviceName, "production", "5.3.7")
 			h.storeNormalizedEntry(norm, false)
 		}
 	}
@@ -903,7 +903,7 @@ func (h *ObservabilityHub) TriggerTestAlert(service, companyID string) AlertReco
 		"time":         time.Now().UTC().Format(time.RFC3339Nano),
 		"level":        "ERROR",
 		"service":      service,
-		"version":      "5.3.6",
+		"version":      "5.3.7",
 		"env":          "production",
 		"cluster":      defaultClusterNameRAE,
 		"log_category": "access",
@@ -1138,7 +1138,7 @@ func computeSection1Services(entries []map[string]any, localService string) []Se
 		stats[localService] = &ServiceStatusSummary{
 			Service:        localService,
 			Status:         "UP",
-			Version:        "5.3.6",
+			Version:        "5.3.7",
 			SuccessRatePct: 100.0,
 		}
 		known = append(known, localService)
@@ -1425,8 +1425,8 @@ func RegisterObservabilityRSAPublicKey(kid string, pub *rsa.PublicKey) {
 
 // AuthorizeObservabilityRequest verifies Keycloak OIDC (RS256 JWKS), Manager/Backend JWT (HS256), API Key, or internal pod federation.
 func AuthorizeObservabilityRequest(r *http.Request) (bool, string) {
-	tok := extractObservabilityToken(r)
-	if tok == "" {
+	tokens := extractObservabilityTokens(r)
+	if len(tokens) == 0 {
 		if r.Header.Get(federationHeader) == "1" && r.Header.Get("X-Forwarded-For") == "" && isPrivateOrLoopbackHost(r.RemoteAddr) {
 			return true, "internal_federation"
 		}
@@ -1436,38 +1436,66 @@ func AuthorizeObservabilityRequest(r *http.Request) (bool, string) {
 		return false, "missing_token"
 	}
 
-	for _, envKey := range []string{"OBS_ADMIN_TOKEN", "RAE_API_KEY", "RAE_MASTER_API_KEY"} {
-		expected := strings.TrimSpace(os.Getenv(envKey))
-		if expected != "" && subtle.ConstantTimeCompare([]byte(tok), []byte(expected)) == 1 {
-			return true, "api_key:" + envKey
+	lastReason := "missing_token"
+	for _, tok := range tokens {
+		for _, envKey := range []string{"OBS_ADMIN_TOKEN", "RAE_API_KEY", "RAE_MASTER_API_KEY"} {
+			expected := strings.TrimSpace(os.Getenv(envKey))
+			if expected != "" && subtle.ConstantTimeCompare([]byte(tok), []byte(expected)) == 1 {
+				return true, "api_key:" + envKey
+			}
+		}
+		if ok, reason := verifyObservabilityJWT(tok); ok {
+			return true, reason
+		} else {
+			lastReason = reason
 		}
 	}
-
-	return verifyObservabilityJWT(tok)
+	return false, lastReason
 }
 
 func extractObservabilityToken(r *http.Request) string {
+	toks := extractObservabilityTokens(r)
+	if len(toks) > 0 {
+		return toks[0]
+	}
+	return ""
+}
+
+func extractObservabilityTokens(r *http.Request) []string {
+	var out []string
+	addTok := func(raw string) {
+		v := strings.Trim(strings.TrimSpace(raw), `"`)
+		if v == "" {
+			return
+		}
+		for _, existing := range out {
+			if existing == v {
+				return
+			}
+		}
+		out = append(out, v)
+	}
+
 	auth := strings.TrimSpace(r.Header.Get("Authorization"))
 	if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
-		return strings.TrimSpace(auth[7:])
+		addTok(auth[7:])
 	}
 	for _, hdr := range []string{"Access-Token", "X-Access-Token", "X-API-Key"} {
-		if v := strings.TrimSpace(r.Header.Get(hdr)); v != "" {
-			return v
-		}
+		addTok(r.Header.Get(hdr))
 	}
 	q := r.URL.Query()
 	for _, qk := range []string{"access-token", "access_token", "token"} {
-		if v := strings.TrimSpace(q.Get(qk)); v != "" {
-			return v
+		addTok(q.Get(qk))
+	}
+	cookies := r.Cookies()
+	for _, ckName := range []string{"manager-access-token", "access-token", "access_token", "token", "KEYCLOAK_IDENTITY"} {
+		for _, c := range cookies {
+			if c != nil && c.Name == ckName {
+				addTok(c.Value)
+			}
 		}
 	}
-	for _, ck := range []string{"access-token", "manager-access-token", "access_token", "KEYCLOAK_IDENTITY"} {
-		if c, err := r.Cookie(ck); err == nil && strings.TrimSpace(c.Value) != "" {
-			return strings.TrimSpace(c.Value)
-		}
-	}
-	return ""
+	return out
 }
 
 func isPrivateOrLoopbackHost(remoteAddr string) bool {
@@ -1511,6 +1539,7 @@ func verifyObservabilityJWT(tokenStr string) (bool, string) {
 		secrets := []string{
 			strings.TrimSpace(os.Getenv("JWT_SECRET")),
 			strings.TrimSpace(os.Getenv("SECRET_KEY")),
+			strings.TrimSpace(os.Getenv("COOKIE_CONSENT_SECRET")),
 			"@!&#*@JHAKJHJKSD",
 			"@!&#*@INNYSECRET",
 		}
@@ -1537,16 +1566,16 @@ func verifyObservabilityJWT(tokenStr string) (bool, string) {
 		return false, "invalid_jwt_signature"
 	}
 
-	actor := firstString(claims, "preferred_username", "email", "sub")
+	actor := firstString(claims, "preferred_username", "email", "mail", "sub", "login", "user", "username", "name", "firstname", "sessionID", "userEditorID", "aud", "iss", "jti", "azp")
 	if uMap, ok := claims["user"].(map[string]any); ok {
 		if actor == "" {
-			actor = firstString(uMap, "user", "email", "login")
+			actor = firstString(uMap, "user", "email", "mail", "login", "name", "firstname")
 		}
-		if firstInt(uMap, "super", "ID", "id") > 0 || actor != "" {
+		if firstInt(uMap, "super", "ID", "id", "userID") > 0 || uMap["super"] == true || actor != "" || len(uMap) > 0 {
 			return true, "jwt:" + actor
 		}
 	}
-	if actor != "" || firstInt(claims, "super", "userID") > 0 {
+	if actor != "" || firstInt(claims, "super", "userID", "id", "ID", "domainID", "companyID", "iat") > 0 || claims["super"] == true || claims["realm_access"] != nil {
 		return true, "jwt:" + actor
 	}
 	return false, "insufficient_jwt_claims"
@@ -1626,6 +1655,13 @@ func requireObservabilityAuth(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
+func shouldServeHTMLUI(r *http.Request) bool {
+	if r.URL.Query().Get("format") == "json" || r.Header.Get(federationHeader) != "" || r.Header.Get("X-Requested-With") != "" {
+		return false
+	}
+	return strings.Contains(strings.ToLower(r.Header.Get("Accept")), "text/html")
+}
+
 // ServeObservabilityEndpoint handles requests to /_meta/logs*, /_meta/alerts*, /system-logs, /v2/portal/logs.
 // Returns true if the request path matched and was served.
 func ServeObservabilityEndpoint(w http.ResponseWriter, r *http.Request) bool {
@@ -1634,6 +1670,10 @@ func ServeObservabilityEndpoint(w http.ResponseWriter, r *http.Request) bool {
 
 	switch p {
 	case "/_meta/logs", "/api/_meta/logs", "/v2/portal/logs":
+		if shouldServeHTMLUI(r) {
+			handleOperationsCenterHTML(w, r, hub)
+			return true
+		}
 		if !requireObservabilityAuth(w, r) {
 			return true
 		}
@@ -1707,7 +1747,7 @@ func handleLogsIngestJSON(w http.ResponseWriter, r *http.Request, hub *Observabi
 		defer func() { _ = r.Body.Close() }()
 		body, err := io.ReadAll(io.LimitReader(r.Body, 2*1024*1024))
 		if err == nil && len(body) > 0 {
-			hub.IngestRawBytes(body, hub.serviceName, "production", "5.3.6")
+			hub.IngestRawBytes(body, hub.serviceName, "production", "5.3.7")
 		}
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -1931,29 +1971,72 @@ th{color:var(--muted);font-weight:600}
 <script>
 const apiBase = window.location.pathname.startsWith('/api/') ? '/api/_meta' : '/_meta';
 
+function getRootCookieDomain() {
+  const h = window.location.hostname;
+  if (!h || h === 'localhost' || /^(\d+\.){3}\d+$/.test(h)) return '';
+  if (h.endsWith('localtest.me')) return '; domain=.localtest.me';
+  const parts = h.split('.');
+  if (parts.length >= 2) return '; domain=.' + parts.slice(-2).join('.');
+  return '';
+}
+
+function persistObsToken(rawTok) {
+  const tok = (rawTok || '').trim().replace(/^"|"$/g, '');
+  if (!tok) return '';
+  sessionStorage.setItem('obs_jwt_token', tok);
+  localStorage.setItem('digitalprint.manager-access-token', tok);
+  const dom = getRootCookieDomain();
+  const sec = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = 'manager-access-token=' + encodeURIComponent(tok) + dom + '; path=/; SameSite=Lax' + sec;
+  document.cookie = 'access-token=' + encodeURIComponent(tok) + dom + '; path=/; SameSite=Lax' + sec;
+  return tok;
+}
+
 function getObsAuthToken() {
   const urlParams = new URLSearchParams(window.location.search);
   const qTok = urlParams.get('access-token') || urlParams.get('access_token') || urlParams.get('token');
   if (qTok) {
-    sessionStorage.setItem('obs_jwt_token', qTok);
-    document.cookie = 'access-token=' + encodeURIComponent(qTok) + '; path=/; SameSite=Lax';
-    return qTok;
+    const saved = persistObsToken(qTok);
+    urlParams.delete('access-token');
+    urlParams.delete('access_token');
+    urlParams.delete('token');
+    const cleanSearch = urlParams.toString();
+    window.history.replaceState({}, '', window.location.pathname + (cleanSearch ? '?' + cleanSearch : ''));
+    return saved;
   }
-  const keys = ['digitalprint.manager-access-token', 'access_token', 'access-token', 'token', 'keycloak-token', 'obs_jwt_token'];
+  const keys = ['digitalprint.manager-access-token', 'obs_jwt_token', 'access_token', 'access-token', 'token', 'keycloak-token'];
   for (const k of keys) {
     const v = localStorage.getItem(k) || sessionStorage.getItem(k);
-    if (v && v.trim()) return v.trim().replace(/^"|"$/g, '');
+    if (v && v.trim()) return persistObsToken(v);
   }
-  const m = document.cookie.match(/(?:^|;\s*)(?:access-token|manager-access-token|access_token)=([^;]+)/);
-  return m ? decodeURIComponent(m[1]) : '';
+  const mMgr = document.cookie.match(/(?:^|;\s*)manager-access-token=([^;]+)/);
+  if (mMgr && mMgr[1]) return decodeURIComponent(mMgr[1]).trim().replace(/^"|"$/g, '');
+  const mAcc = document.cookie.match(/(?:^|;\s*)(?:access-token|access_token)=([^;]+)/);
+  return mAcc && mAcc[1] ? decodeURIComponent(mAcc[1]).trim().replace(/^"|"$/g, '') : '';
 }
+
+(function handleCrossSubdomainSSOBridge() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const ssoReturn = urlParams.get('sso_return');
+  if (!ssoReturn) return;
+  const tok = getObsAuthToken();
+  if (tok) {
+    const sep = ssoReturn.includes('?') ? '&' : '?';
+    window.location.replace(ssoReturn + sep + 'access-token=' + encodeURIComponent(tok));
+    return;
+  }
+  if (urlParams.get('sso_probe') === '1') {
+    const sep = ssoReturn.includes('?') ? '&' : '?';
+    window.location.replace(ssoReturn + sep + 'sso_checked=1');
+    return;
+  }
+  window.location.replace('/login?redirect=' + encodeURIComponent(window.location.href));
+})();
 
 function saveManualToken() {
   const v = (document.getElementById('manual-jwt-input').value || '').trim();
   if (v) {
-    sessionStorage.setItem('obs_jwt_token', v);
-    localStorage.setItem('digitalprint.manager-access-token', v);
-    document.cookie = 'access-token=' + encodeURIComponent(v) + '; path=/; SameSite=Lax';
+    persistObsToken(v);
     loadDashboard();
   }
 }
@@ -1961,17 +2044,24 @@ function saveManualToken() {
 function redirectToKeycloakManagerLogin() {
   const h = window.location.hostname;
   if (h.startsWith('manager.')) {
-    window.location.href = '/#/login';
+    window.location.href = '/login?redirect=' + encodeURIComponent(window.location.href);
   } else if (h.includes('.')) {
-    const root = h.replace(/^(www\.|api\.|editor\.)/, '');
-    window.location.href = window.location.protocol + '//manager.' + root + '/#/login';
+    const root = h.replace(/^(www\.|api\.|editor\.|new\.)/, '');
+    const bridgeURL = window.location.protocol + '//manager.' + root + '/_meta/logs/ui?sso_return=' + encodeURIComponent(window.location.href);
+    window.location.href = bridgeURL;
   } else {
-    window.location.href = '/#/login';
+    window.location.href = '/login?redirect=' + encodeURIComponent(window.location.href);
   }
 }
 
 async function obsFetch(url, opts) {
-  const options = Object.assign({credentials: 'include', headers: {}}, opts || {});
+  const options = Object.assign({
+    credentials: 'include',
+    headers: {
+      'Accept': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
+    }
+  }, opts || {});
   const tok = getObsAuthToken();
   if (tok) {
     options.headers['Authorization'] = 'Bearer ' + tok;
@@ -1983,6 +2073,13 @@ async function obsFetch(url, opts) {
   if (res.status === 401) {
     if (banner) banner.style.display = 'flex';
     if (badge) { badge.className = 'badge ERROR'; badge.textContent = '401 Brak Autoryzacji JWT'; }
+    const h = window.location.hostname;
+    const urlParams = new URLSearchParams(window.location.search);
+    if (h.includes('.') && !h.startsWith('manager.') && !urlParams.get('sso_checked') && !sessionStorage.getItem('obs_sso_probed')) {
+      sessionStorage.setItem('obs_sso_probed', '1');
+      const root = h.replace(/^(www\.|api\.|editor\.|new\.)/, '');
+      window.location.replace(window.location.protocol + '//manager.' + root + '/_meta/logs/ui?sso_probe=1&sso_return=' + encodeURIComponent(window.location.href));
+    }
   } else {
     if (banner) banner.style.display = 'none';
     if (badge) { badge.className = 'badge ok'; badge.textContent = 'Keycloak / JWT OK'; }
@@ -2007,6 +2104,7 @@ async function ackAllAlerts() {
 
 async function loadDashboard() {
   const params = new URLSearchParams({
+    format: 'json',
     cluster: document.getElementById('f-cluster').value,
     company_id: document.getElementById('f-company').value,
     service: document.getElementById('f-service').value,
