@@ -73,7 +73,7 @@ func TestObservabilityHub_CanonicalSchemaAndAlertEngine(t *testing.T) {
 		"http_status":    502,
 		"response_bytes": 512,
 		"remote_addr":    "10.0.0.15:54321",
-	}, "rae-suite", "production", "5.3.6")
+	}, "rae-suite", "production", "5.3.7")
 	if norm["method"] != "POST" {
 		t.Fatalf("expected method POST, got %v", norm["method"])
 	}
@@ -99,15 +99,15 @@ func TestObservabilityHub_CanonicalSchemaAndAlertEngine(t *testing.T) {
 		t.Fatalf("expected log_category access, got %v", norm["log_category"])
 	}
 
-	norm429 := NormalizeLogRecord(map[string]any{"status": 429, "path": "/api/login"}, "rae-suite", "prod", "5.3.6")
+	norm429 := NormalizeLogRecord(map[string]any{"status": 429, "path": "/api/login"}, "rae-suite", "prod", "5.3.7")
 	if norm429["error_code"] != "RATE_LIMITED" {
 		t.Fatalf("expected RATE_LIMITED, got %v", norm429["error_code"])
 	}
-	norm400 := NormalizeLogRecord(map[string]any{"status": 400, "path": "/api/login"}, "rae-suite", "prod", "5.3.6")
+	norm400 := NormalizeLogRecord(map[string]any{"status": 400, "path": "/api/login"}, "rae-suite", "prod", "5.3.7")
 	if norm400["error_code"] != "VALIDATION_FAILED" {
 		t.Fatalf("expected VALIDATION_FAILED, got %v", norm400["error_code"])
 	}
-	normAudit := NormalizeLogRecord(map[string]any{"action": "DELETE_USER", "msg": "audit delete"}, "rae-suite", "prod", "5.3.6")
+	normAudit := NormalizeLogRecord(map[string]any{"action": "DELETE_USER", "msg": "audit delete"}, "rae-suite", "prod", "5.3.7")
 	if normAudit["log_category"] != "audit" {
 		t.Fatalf("expected audit category, got %v", normAudit["log_category"])
 	}
@@ -116,17 +116,17 @@ func TestObservabilityHub_CanonicalSchemaAndAlertEngine(t *testing.T) {
 	}
 
 	// 1. Trigger DS-ALERT-01 (High 5xx Error Rate)
-	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:00Z","level":"ERROR","msg":"db timeout","http_method":"POST","http_path":"/api/orders/99","http_status":500,"duration_ms":125.4,"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","company_id":"25","domain":"printworks.pl"}`+"\n"), "rae-suite", "test", "5.3.6")
+	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:00Z","level":"ERROR","msg":"db timeout","http_method":"POST","http_path":"/api/orders/99","http_status":500,"duration_ms":125.4,"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","company_id":"25","domain":"printworks.pl"}`+"\n"), "rae-suite", "test", "5.3.7")
 	// 2. Trigger DS-ALERT-02 (CalcEngineLatencyBreach > 150ms on /calculate)
-	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:01Z","level":"WARN","msg":"slow calc","method":"POST","path":"/api/ps_types/12/ps_calculate","status":200,"duration_ms":612.8,"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"11f067aa0ba902b8","company_id":"25","domain":"printworks.pl"}`+"\n"), "rae-suite", "test", "5.3.6")
+	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:01Z","level":"WARN","msg":"slow calc","method":"POST","path":"/api/ps_types/12/ps_calculate","status":200,"duration_ms":612.8,"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"11f067aa0ba902b8","company_id":"25","domain":"printworks.pl"}`+"\n"), "rae-suite", "test", "5.3.7")
 	// 3. Trigger DS-ALERT-03 (ServiceReadinessDown)
-	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:02Z","level":"ERROR","event":"readiness_failed","path":"/readyz","status":503}`+"\n"), "rae-suite", "test", "5.3.6")
+	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:02Z","level":"ERROR","event":"readiness_failed","path":"/readyz","status":503}`+"\n"), "rae-suite", "test", "5.3.7")
 	// 4. Trigger DS-ALERT-04 (PodRestartOrOOMKilled)
-	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:03Z","level":"ERROR","event":"http_handler_panic_recovered","error_code":"ERR_INTERNAL_PANIC"}`+"\n"), "rae-suite", "test", "5.3.6")
+	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:03Z","level":"ERROR","event":"http_handler_panic_recovered","error_code":"ERR_INTERNAL_PANIC"}`+"\n"), "rae-suite", "test", "5.3.7")
 	// 5. Trigger DS-ALERT-05 (SecurityAuthSpike)
-	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:04Z","level":"WARN","event":"auth_login_failed","path":"/login","status":403}`+"\n"), "rae-suite", "test", "5.3.6")
+	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:04Z","level":"WARN","event":"auth_login_failed","path":"/login","status":403}`+"\n"), "rae-suite", "test", "5.3.7")
 	// 6. Trigger DS-ALERT-06 (RAEAuditChainBroken)
-	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:05Z","level":"ERROR","event":"audit_chain_broken","log_category":"audit","company_id":"25"}`+"\n"), "rae-suite", "test", "5.3.6")
+	hub.IngestRawBytes([]byte(`{"time":"2026-10-24T12:00:05Z","level":"ERROR","event":"audit_chain_broken","log_category":"audit","company_id":"25"}`+"\n"), "rae-suite", "test", "5.3.7")
 
 	alerts := hub.ListAlerts(true)
 	if len(alerts) < 6 {
@@ -224,7 +224,7 @@ func TestObservabilityHTTPHandlersAndFederation(t *testing.T) {
 	}
 
 	// 1. Ingest a synthetic 500 error directly into GlobalObservabilityHub
-	GlobalObservabilityHub().IngestRawBytes([]byte(`{"time":"2026-10-24T12:10:30Z","level":"ERROR","msg":"boom","method":"GET","path":"/api/test/123","status":500,"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7"}`+"\n"), "rae-suite-test", "test", "5.3.6")
+	GlobalObservabilityHub().IngestRawBytes([]byte(`{"time":"2026-10-24T12:10:30Z","level":"ERROR","msg":"boom","method":"GET","path":"/api/test/123","status":500,"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7"}`+"\n"), "rae-suite-test", "test", "5.3.7")
 
 	// 2. Ingest endpoint /_meta/logs/ingest
 	reqIngest := httptest.NewRequest(http.MethodPost, "/_meta/logs/ingest", bytes.NewBufferString(`{"time":"2026-10-24T12:11:00Z","level":"INFO","service":"editor-go","msg":"ingested log"}`))
@@ -612,5 +612,52 @@ func TestObservabilityKeycloakAndManagerJWTAuth(t *testing.T) {
 	})
 	if ok, _ := verifyObservabilityJWT(topClaimsTok); !ok {
 		t.Fatalf("expected top-level super=1 HS256 token with secondary secret to verify")
+	}
+
+	// 7. BFF SignLegacyToken style claims (mail, sessionID, aud=dreamsoft-bff, userID=0) must NOT fail with insufficient_jwt_claims
+	bffLegacyTok := makeHS256TestJWT("@!&#*@INNYSECRET", map[string]any{
+		"userID":       0,
+		"sessionID":    "bff_1234567890abcdef",
+		"userEditorID": "0",
+		"firstname":    "Grzegorz",
+		"mail":         "grzegorz@printworks.pl",
+		"aud":          "dreamsoft-bff",
+		"exp":          time.Now().Add(30 * time.Minute).Unix(),
+	})
+	if ok, reason := verifyObservabilityJWT(bffLegacyTok); !ok {
+		t.Fatalf("expected BFF SignLegacyToken claims to verify, got ok=%v reason=%s", ok, reason)
+	}
+
+	// 8. Multiple cookies: first cookie invalid/expired, second cookie valid -> must succeed
+	reqMultiCookie := httptest.NewRequest(http.MethodGet, "/api/_meta/logs", nil)
+	reqMultiCookie.Header.Set("X-Forwarded-For", "203.0.113.42")
+	reqMultiCookie.AddCookie(&http.Cookie{Name: "access-token", Value: expiredTok})
+	reqMultiCookie.AddCookie(&http.Cookie{Name: "manager-access-token", Value: bffLegacyTok})
+	wMultiCookie := httptest.NewRecorder()
+	ServeObservabilityEndpoint(wMultiCookie, reqMultiCookie)
+	if wMultiCookie.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK when second cookie is valid, got %d", wMultiCookie.Code)
+	}
+
+	// 9. Direct browser navigation (Accept: text/html) to /api/_meta/logs must render HTML Operations Center with Keycloak login banner
+	reqBrowserHTML := httptest.NewRequest(http.MethodGet, "/api/_meta/logs", nil)
+	reqBrowserHTML.Header.Set("X-Forwarded-For", "203.0.113.42")
+	reqBrowserHTML.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	wBrowserHTML := httptest.NewRecorder()
+	ServeObservabilityEndpoint(wBrowserHTML, reqBrowserHTML)
+	if wBrowserHTML.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK HTML when browser navigates to /api/_meta/logs, got %d", wBrowserHTML.Code)
+	}
+	if !strings.Contains(wBrowserHTML.Header().Get("Content-Type"), "text/html") {
+		t.Fatalf("expected text/html Content-Type on browser navigation to /api/_meta/logs, got %s", wBrowserHTML.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(wBrowserHTML.Body.String(), "Zaloguj w Manager / Keycloak") {
+		t.Fatalf("expected HTML response to contain Keycloak/Manager login button")
+	}
+	if !strings.Contains(wBrowserHTML.Body.String(), "handleCrossSubdomainSSOBridge") {
+		t.Fatalf("expected HTML response to contain cross-subdomain SSO bridge")
+	}
+	if shouldServeHTMLUI(httptest.NewRequest(http.MethodGet, "/api/_meta/logs?format=json", nil)) {
+		t.Fatalf("did not expect format=json to serve HTML UI")
 	}
 }
